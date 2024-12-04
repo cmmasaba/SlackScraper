@@ -26,3 +26,33 @@ considerations include storage, network bandwidth, and compute resources, enter 
 The Dockerfile included computes a small file (~133MB) that can be deployed to the cloud.<br>
 
 ## Installation and Running.
+1. Clone the repository to your local machine in an appropriate folder.<br>
+    ```bash
+
+    git clone https://github.com/cmmasaba/SlackScraper.git
+
+    ```
+2. Change into the code folder.
+    ```bash
+
+    cd SlackScraper
+
+    ```
+3. Create the virtual environment for managing the project and it's dependencies.
+    ```python
+
+    python -m venv .venv
+
+    ```
+4. Activate the virtual environment.
+    ```bash
+
+    source .venv/bin/avtivate
+
+    ```
+5. Install project dependencies.
+    ```bash
+
+    pip install -r requirements.txt
+
+    ```
