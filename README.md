@@ -25,7 +25,7 @@ gracefully, record progress, and resume from the last checkpoint when interrupte
 considerations include storage, network bandwidth, and compute resources, enter scaling.<br>
 The Dockerfile included computes a small file (~133MB) that can be deployed to the cloud.<br>
 
-## Setup and Running Instructions.
+## Setup and Running Instructions
 1. Clone the repository to your local machine in an appropriate folder.<br>
     ```bash
 
@@ -39,7 +39,7 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
 
     ```
 3. Create the virtual environment for managing the project and it's dependencies.
-    ```python
+    ```bash
 
     python -m venv .venv
 
@@ -71,4 +71,19 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
     ```
 7. Follow the instructions at this [link](https://cloud.google.com/iam/docs/keys-create-delete) to download the service account key created above and save it in<br> the `src` folder. You can rename it to a more friendly name.
 
-8. 
+8. Set the environment varible pointing to the service account key file.
+    ```bash
+
+    export GOOGLE_APPLICATION_CREDENTIALS=your-service-account-key-file-path
+
+    i.e export GOOGLE_APPLICATION_CREDENTIALS=first-project-112233.json
+
+    ```
+9. Start the automation.
+    ```bash
+
+    python src/main.py
+
+    ```
+
+As the automation executes, it outputs log information to stdout that you can use to follow along.
