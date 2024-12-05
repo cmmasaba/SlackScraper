@@ -25,7 +25,7 @@ gracefully, record progress, and resume from the last checkpoint when interrupte
 considerations include storage, network bandwidth, and compute resources, enter scaling.<br>
 The Dockerfile included computes a small file (~133MB) that can be deployed to the cloud.<br>
 
-## Installation and Running.
+## Setup and Running Instructions.
 1. Clone the repository to your local machine in an appropriate folder.<br>
     ```bash
 
@@ -56,3 +56,13 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
     pip install -r requirements.txt
 
     ```
+6. If you don't have an account on Google Cloud Platform you can sign up and create a project
+   [here](https://cloud.google.com/?hl=en).<br>
+   Follow this [link](https://cloud.google.com/iam/docs/service-accounts-create#iam-service-accounts-create-console) to create a service account and assign the following roles to the SA:<br>
+   - `BigQuery Job User`
+   - `Secret Manager Secret Accessor`
+   - `Secret Manager Viewer`
+   - `Storage Object Creator`
+   - `Storage Object User`
+   - `Storage Object Viewer`
+   
