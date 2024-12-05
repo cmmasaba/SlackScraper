@@ -58,11 +58,17 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
     ```
 6. If you don't have an account on Google Cloud Platform you can sign up and create a project
    [here](https://cloud.google.com/?hl=en).<br>
-   Follow this [link](https://cloud.google.com/iam/docs/service-accounts-create#iam-service-accounts-create-console) to create a service account and assign the following roles to the SA:<br>
-   - `BigQuery Job User`
-   - `Secret Manager Secret Accessor`
-   - `Secret Manager Viewer`
-   - `Storage Object Creator`
-   - `Storage Object User`
-   - `Storage Object Viewer`
-   
+   Follow the instructions at this [link](https://cloud.google.com/iam/docs/service-accounts-create#iam-service-accounts-create-console) to create a service account and assign the following roles to the SA:<br>
+   ```
+
+   - BigQuery Job User
+   - Secret Manager Secret Accessor
+   - Secret Manager Viewer
+   - Storage Object Creator
+   - Storage Object User
+   - Storage Object Viewer
+
+    ```
+7. Follow the instructions at this [link](https://cloud.google.com/iam/docs/keys-create-delete) to download the service account key created above and save it in<br> the `src` folder. You can rename it to a more friendly name.
+
+8. 
