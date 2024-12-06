@@ -1,4 +1,4 @@
 # Ignore all hidden directories
 .venv/
 
-.env
+src/.env
