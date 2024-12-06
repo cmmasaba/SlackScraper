@@ -228,7 +228,7 @@ class SlackScraper:
                                                         'filename': file.get('name'),
                                                         'storage_url': file_storage_path
                                                     })
-                                                except (TimeoutError, ConnectionError, Exception):
+                                                except (TimeoutError, ConnectionError):
                                                     continue
                                 threaded_reply['files'] = file_paths
 
@@ -250,7 +250,7 @@ class SlackScraper:
                                                     'filename': file.get('name'),
                                                     'storage_url': file_storage_path
                                                 })
-                                            except (TimeoutError, ConnectionError, Exception):
+                                            except (TimeoutError, ConnectionError):
                                                 continue
                             message['files'] = file_paths
                             message['threads'] = threaded_replies
@@ -262,7 +262,7 @@ class SlackScraper:
                 self.gcs_add_directory(f'messages/')
                 self.gcs_add_file(f'messages/slack_{current_date}.jsonl', f'messages/')
             return True
-        except (SlackApiError, IncompleteRead, KeyboardInterrupt, Exception) as e:
+        except (SlackApiError, IncompleteRead) as e:
             print(f"Error: {e}")
             try:
                 if message_number < self.last_checkpoint:
@@ -520,7 +520,7 @@ class SlackScraper:
         
         if file_path:
             # Verify the downloaded file
-            if self.verify_file_content(file_path):
+            if self._verify_file_content(file_path):
                 print("✓ File downloaded and verified successfully\n")
             else:
                 print("⚠ File may be corrupted or in unexpected format\n")
@@ -639,14 +639,14 @@ class SlackScraper:
             self.get_slack_workspace_members()
             self.get_private_slack_channels_ids()
 
-            read_channels = self.read_checkpoint(self.checkpoint_file)
-            response = self.get_channels_messages(read_channels, self.checkpoint_file)
+            self.read_channels = self.read_checkpoints(self.checkpoint_file)
+            response = self.get_slack_messages()
 
             while not response:
                 print("Restarting download")
-                read_channels = self.read_checkpoint(self.checkpoint_file)
+                self.read_channels = self.read_checkpoints(self.checkpoint_file)
                 sleep(10)
-                response = self.get_channels_messages(read_channels, self.checkpoint_file)
+                response = self.get_slack_messages()
         except KeyboardInterrupt as e:
             print(f'Stopping the app. Error: {e}')
         finally:
