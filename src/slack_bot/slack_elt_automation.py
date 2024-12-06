@@ -12,7 +12,7 @@ import requests                                         # Used for downloading f
 import mimetypes                                        # Define the mime types of the expected files
 
 class SlackScraper:
-    def __init__(self) -> None:
+    def __init__(self, saving_to_cloud = True) -> None:
         """
         Initialize the app.
         """
@@ -23,10 +23,12 @@ class SlackScraper:
         self.client = self.app.client
         self.checkpoint_file = Path('checkpoints.json')
         self.checkpoint_file.touch(exist_ok=True)
+        self.downloads_folder = Path('SlackDownloads').mkdir(exist_ok=True)
         self.read_channels = {}
         self.storage_client = storage.Client(project=os.environ['GCP_PROJECT'])
         self.storage_bucket = self.storage_client.bucket(os.environ['GCP_STORAGE_BUCKET'])
         self.last_checkpoint = 0
+        self.saving_to_cloud = saving_to_cloud
     
     def read_checkpoints(self, checkpoint_file: Path) -> dict:
         """
@@ -634,4 +636,31 @@ class SlackScraper:
     
     def start(self,):
         # TODO: implement the process to start the bot
-        pass
+        self.get_slack_workspace_members()
+        self.get_private_slack_channels_ids()
+
+        read_channels = self.read_checkpoint(self.checkpoint_file)
+        response = self.get_channels_messages(read_channels, self.checkpoint_file)
+
+        while not response:
+            print("Restarting download")
+            read_channels = self.read_checkpoint(self.checkpoint_file)
+            sleep(10)
+            response = self.get_channels_messages(read_channels, self.checkpoint_file)
+
+        self.stop()
+    
+    def stop(self,):
+        """
+        Stop the bot and perform clean up operations.
+        """
+        import shutil                               # Delete the downloaded content
+
+        try:
+            # Delete the checkpoints file and downloads folder after the bot is done
+            # and is saving content to the cloud. Otherwise don't delete.
+            self.checkpoint_file.unlink(missing_ok=True)
+            if self.saving_to_cloud:
+                shutil.rmtree(self.downloads_folder)
+        except Exception as e:
+            print(f'Error: {e}', end='\n')
