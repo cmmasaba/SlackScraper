@@ -31,10 +31,10 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
     git clone https://github.com/cmmasaba/SlackScraper.git
 
     ```
-2. Navigate to the code folder.
+2. Navigate to the root folder.
     ```bash
 
-    cd SlackScraper/src/
+    cd SlackScraper/
 
     ```
 3. Create the virtual environment for managing the project and it's dependencies.
@@ -88,7 +88,7 @@ three steps are relevant for us. When requesting scopes, request for the followi
 10. Start the automation.
     ```bash
 
-    python main.py
+    python src/main.py
 
     ```
 
