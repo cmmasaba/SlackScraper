@@ -635,20 +635,22 @@ class SlackScraper:
         return file_path
     
     def start(self,):
-        # TODO: implement the process to start the bot
-        self.get_slack_workspace_members()
-        self.get_private_slack_channels_ids()
+        try:
+            self.get_slack_workspace_members()
+            self.get_private_slack_channels_ids()
 
-        read_channels = self.read_checkpoint(self.checkpoint_file)
-        response = self.get_channels_messages(read_channels, self.checkpoint_file)
-
-        while not response:
-            print("Restarting download")
             read_channels = self.read_checkpoint(self.checkpoint_file)
-            sleep(10)
             response = self.get_channels_messages(read_channels, self.checkpoint_file)
 
-        self.stop()
+            while not response:
+                print("Restarting download")
+                read_channels = self.read_checkpoint(self.checkpoint_file)
+                sleep(10)
+                response = self.get_channels_messages(read_channels, self.checkpoint_file)
+        except KeyboardInterrupt as e:
+            print(f'Stopping the app. Error: {e}')
+        finally:
+            self.stop()
     
     def stop(self,):
         """
