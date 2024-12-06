@@ -104,7 +104,8 @@ lines to disable the feature of saving to Google Cloud Storage:
 #73, #74, #214, #223, #236, #245, #260, #261
 
 ```
-In the setup instructions, skip the parts relevant to Google Cloud Platform.
+In the setup instructions, skip the parts relevant to Google Cloud Platform.<br>
+Set the boolean variable in line 4 of [src/main.py](src/main.py) to `False`
 
 ### License
 Refer to the [LICENCSE](/LICENSE) file for terms of usage. 
