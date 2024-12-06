@@ -1,5 +1,5 @@
-# Ignore all hidden directories
+# Ignore the virtual environment configs
 .venv/
 
-# Environment settings
+# Ignore environment variables, secrets and configs
 .env
