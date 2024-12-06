@@ -111,6 +111,6 @@ Set the boolean variable in line 4 of [src/main.py](src/main.py) to `False`
 Refer to the [LICENCSE](LICENSE) file for terms of usage. 
 
 ### Contact
-For inquiries, issues or source contributions, please contact `mmasabacollins9@gmail.com`.
+For inquiries, issues or source contributions, get in touch via `mmasabacollins9@gmail.com`.
 
 &copy; Collins Mmasaba 2024
