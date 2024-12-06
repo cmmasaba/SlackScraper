@@ -1,4 +1,4 @@
 slack_bolt
 requests
 google-cloud-storage==2.10.0
-google-cloud-secret-manager
+python-dotenv==1.0.1
