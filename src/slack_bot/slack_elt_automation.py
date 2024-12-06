@@ -1,6 +1,3 @@
-'''
-The bot scraps messages from Slack using the Web API.
-'''
 import os                                               # Accessing env variables
 from slack_bolt import App                              # Initializing the Slack client
 from slack_sdk.errors import SlackApiError              # Error handling for errors from SLACK API
@@ -68,13 +65,13 @@ class SlackScraper:
         """
         users = self.client.users_list()
 
-        Path(f'users/').mkdir(parents=True, exist_ok=True)
-        with open(f"users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'w') as fp:
+        Path(f'SlackDownloads/Users/').mkdir(parents=True, exist_ok=True)
+        with open(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'w') as fp:
             for user in users['members']:
                 json.dump(user, fp)
                 fp.write('\n')
         self.gcs_add_directory('users')
-        self.gcs_add_file(f"users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
+        self.gcs_add_file(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
 
     def directory_exists(self, directory_name) -> bool:
         """
@@ -137,7 +134,8 @@ class SlackScraper:
             for result in self.client.conversations_list(types="private_channel"):
                 for channel in result["channels"]:
                     channels[channel["id"]] = channel['name']
-            with open('Channels/private_channels.json', 'w') as fp:
+            Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
+            with open('SlackDownloads/Channels/private_channels.json', 'w') as fp:
                 json.dump(channels, fp, indent=4)
             return channels
         except SlackApiError as e:
@@ -154,7 +152,8 @@ class SlackScraper:
             for result in self.client.conversations_list(types="public_channel"):
                 for channel in result["channels"]:
                     channels[channel["id"]] = channel['name']
-            with open('Channels/public_channels.json', 'w') as fp:
+            Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
+            with open('SlackDownloads/Channels/public_channels.json', 'w') as fp:
                 json.dump(channels, fp, indent=4)
             return channels
         except SlackApiError as e:
@@ -170,7 +169,7 @@ class SlackScraper:
             threaded_replies = []
             current_date = datetime.today().strftime('%Y%m%d')
 
-            with open('Channels/private_channels.json', 'r') as fp:
+            with open('SlackDownloads/Channels/private_channels.json', 'r') as fp:
                 channels = json.load(fp)
 
             Path(f'SlackDownloads/Messages/').mkdir(parents=True, exist_ok=True)
