@@ -78,7 +78,7 @@ three steps are relevant for us. When requesting scopes, request for the followi
     users:read
 
     ```
-9. Set the environment varibles in the `src/.env` file.
+9. Create a .env file at the root folder and set the following environment varibles.
     ```
 
     GOOGLE_APPLICATION_CREDENTIALS=path-to-your-service-account-key-file
