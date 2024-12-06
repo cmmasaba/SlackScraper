@@ -1,4 +1,3 @@
-# TODO: implement the entrypoint
 from slack_bot.slack_elt_automation import SlackScraper
 
 def main():
