@@ -6,7 +6,7 @@ def main():
 
     print('Starting automation...', end='\n')
     app.start()
-    print('Finished successfully.')
+    print('Finished successfully.', end='\n')
 
 if __name__ == '__main__':
     main()
