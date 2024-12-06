@@ -12,7 +12,7 @@ import requests                                         # Used for downloading f
 import mimetypes                                        # Define the mime types of the expected files
 
 class SlackScraper:
-    def __init__(self, saving_to_cloud = True) -> None:
+    def __init__(self, save_to_cloud = True) -> None:
         """
         Initialize the app.
         """
@@ -28,7 +28,7 @@ class SlackScraper:
         self.storage_client = storage.Client(project=os.environ['GCP_PROJECT'])
         self.storage_bucket = self.storage_client.bucket(os.environ['GCP_STORAGE_BUCKET'])
         self.last_checkpoint = 0
-        self.saving_to_cloud = saving_to_cloud
+        self.save_to_cloud = save_to_cloud
     
     def read_checkpoints(self, checkpoint_file: Path) -> dict:
         """
@@ -662,7 +662,7 @@ class SlackScraper:
             # Delete the checkpoints file and downloads folder after the bot is done
             # and is saving content to the cloud. Otherwise don't delete.
             self.checkpoint_file.unlink(missing_ok=True)
-            if self.saving_to_cloud:
+            if self.save_to_cloud:
                 shutil.rmtree(self.downloads_folder)
         except Exception as e:
             print(f'Error: {e}', end='\n')
