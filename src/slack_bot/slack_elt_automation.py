@@ -10,6 +10,7 @@ from time import sleep                                  # Suspending the bot whe
 from pathlib import Path                                # Accessing files in storage
 from google.cloud import storage                        # Interacting with Google Cloud Storage
 from http. client import IncompleteRead                 # Error handling for unstable network conditions
+from dotenv import load_dotenv                          # Handling environment variables
 import requests                                         # Used for downloading files
 import mimetypes                                        # Define the mime types of the expected files
 
@@ -18,8 +19,7 @@ class SlackScraper:
         """
         Initialize the app.
         """
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = Path('rtux-sandbox-da74d01437fd.json')
-        os.environ['SLACK_BOT_TOKEN'] = self.access_secret_version('slack_bot_token')
+        load_dotenv()
 
         self.slack_bot_token = os.environ['SLACK_BOT_TOKEN']
         self.app = App(token=self.slack_bot_token)
@@ -30,22 +30,6 @@ class SlackScraper:
         self.storage_client = storage.Client(project="rtux-sandbox")
         self.storage_bucket = self.storage_client.bucket("slack-messages-scraping")
         self.last_checkpoint = 0
-
-    def access_secret_version(self, secret_id, version_id='latest') -> str:
-        """
-        Access secrets and tokens stored in Google Secrets Manager.
-        Args:
-            secret_id: the id of the secret stored in Google Secrets Manager.
-            version_id: the version of Secrets Manager to use.
-        Returns:
-            The token or secret stored.
-        """
-        from google.cloud import secretmanager          # Access tokens and secrets stored using Google
-
-        client = secretmanager.SecretManagerServiceClient()
-        name = f"projects/rtux-sandbox/secrets/{secret_id}/versions/{version_id}"
-        response = client.access_secret_version(name=name)
-        return response.payload.data.decode('UTF-8')
     
     def read_checkpoints(self, checkpoint_file: Path) -> dict:
         """
@@ -153,7 +137,7 @@ class SlackScraper:
             for result in self.client.conversations_list(types="private_channel"):
                 for channel in result["channels"]:
                     channels[channel["id"]] = channel['name']
-            with open('private_channels.json', 'w') as fp:
+            with open('Channels/private_channels.json', 'w') as fp:
                 json.dump(channels, fp, indent=4)
             return channels
         except SlackApiError as e:
@@ -170,7 +154,7 @@ class SlackScraper:
             for result in self.client.conversations_list(types="public_channel"):
                 for channel in result["channels"]:
                     channels[channel["id"]] = channel['name']
-            with open('public_channels.json', 'w') as fp:
+            with open('Channels/public_channels.json', 'w') as fp:
                 json.dump(channels, fp, indent=4)
             return channels
         except SlackApiError as e:
@@ -186,13 +170,13 @@ class SlackScraper:
             threaded_replies = []
             current_date = datetime.today().strftime('%Y%m%d')
 
-            with open('private_channels.json', 'r') as fp:
+            with open('Channels/private_channels.json', 'r') as fp:
                 channels = json.load(fp)
 
-            Path(f'messages/').mkdir(parents=True, exist_ok=True)
-            Path(f'messages/slack_{current_date}.jsonl').touch(exist_ok=True)
+            Path(f'SlackDownloads/Messages/').mkdir(parents=True, exist_ok=True)
+            Path(f'SlackDownloads/Messages/slack_{current_date}.jsonl').touch(exist_ok=True)
 
-            with open(f'messages/slack_{current_date}.jsonl', 'a') as messages_fp:
+            with open(f'SlackDownloads/Messages/slack_{current_date}.jsonl', 'a') as messages_fp:
                 timestamp_since_last_backup = datetime.now() - timedelta(days=1)
                 for channel_id, channel_name in channels.items():
                     messages = []
@@ -233,8 +217,8 @@ class SlackScraper:
                                         if file.get('url_private_download'):
                                             file_path = self.download_and_verify_slack_file(
                                                             file.get('url_private_download'),
-                                                            f'files/{current_date}/{channel_name}'
-                                                )
+                                                            f'SlackDownloads/Files/{current_date}/{channel_name}'
+                                                        )
                                             if file_path:
                                                 try:
                                                     file_storage_path = self.gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
@@ -255,7 +239,7 @@ class SlackScraper:
                                     if file.get('url_private_download'):
                                         file_path = self.download_and_verify_slack_file(
                                                         file.get('url_private_download'),
-                                                        f'files/{current_date}/{channel_name}'
+                                                        f'SlackDownloads/Files/{current_date}/{channel_name}'
                                                     )
                                         if file_path:
                                             try:
@@ -269,7 +253,7 @@ class SlackScraper:
                                                 continue
                             message['files'] = file_paths
                             message['threads'] = threaded_replies
-                            json.dump(message, messages_fp)             # Save in JSONL format
+                            json.dump(message, messages_fp)                 # Save in JSONL format
                             messages_fp.write('\n')
                     self.write_checkpoint(self.checkpoint_file, channel_name, message_number + 1)
                     message_number = 0                                      # In case it fails at the start of the next channel, message number should be zero
@@ -298,30 +282,34 @@ class SlackScraper:
         Returns:
             True if formatted with no errors, otherwise False.
         '''
-        with open(file_path, 'r') as file:
-            messages = []
-            for message_number, message in enumerate(file):
+        with open(file_path, 'r') as fp:
+            data = []
+            for linenumber, line in enumerate(fp):
                 try:
-                    messages.append(json.loads(message))
+                    data.append(json.loads(line))
                 except json.JSONDecodeError as e:
-                    print(f"Failed on line {message_number}")
+                    print(f"Failed on line {linenumber}")
                     print(e)
                     return False
 
         with open(file_path, 'w') as fp:
-            for message in messages:
-                if not message.get('old_name'):
-                    message['old_name'] = None
-                if not message.get('name'):
-                    message['name'] = None
-                if not message.get('purpose'):
-                    message['purpose'] = None
-                if message.get("blocks"):
-                    message['blocks'] = [str(message['blocks'])]
-                if message.get('root') and message['root'].get('blocks'):
-                    message['root']['blocks'] = [str(message['root']['blocks'])]
-                if message.get('root') and message['root'].get('attachments'):
-                    for attachment in message['root']['attachments']:
+            for line in data:
+                if not line.get('old_name'):
+                    line['old_name'] = None
+                if not line.get('name'):
+                    line['name'] = None
+                if not line.get('purpose'):
+                    line['purpose'] = None
+                if line.get("blocks"):
+                    line['blocks'] = [str(line['blocks'])]
+                if line.get('root') and line['root'].get('blocks'):
+                    line['root']['blocks'] = [str(line['root']['blocks'])]
+                if line.get('pinned_to'):
+                    del line['pinned_to']
+                if line.get('pinned_info'):
+                    del line['pinned_info']
+                if line.get('root') and line['root'].get('attachments'):
+                    for attachment in line['root']['attachments']:
                         if attachment.get('blocks'):
                             attachment['blocks'] = [str(attachment['blocks'])]
                         if not attachment.get('thumb_url'):
@@ -352,12 +340,16 @@ class SlackScraper:
                             attachment['fallback'] = None
                         if not attachment.get('is_share'):                       
                             attachment['is_share'] = None
+                        if not attachment.get('is_reply_unfurl'):                       
+                            attachment['is_reply_unfurl'] = None
                         if not attachment.get('service_name'):                       
                             attachment['service_name'] = None
                         if attachment.get('message_blocks'):
                             attachment['message_blocks'] = [str(attachment['message_blocks'])]
-                if message.get('attachments'):
-                    for attachment in message['attachments']:
+                        if attachment.get('files'):
+                            del attachment['files']
+                if line.get('attachments'):
+                    for attachment in line['attachments']:
                         if attachment.get('blocks'):
                             attachment['blocks'] = [str(attachment['blocks'])]
                         if not attachment.get('private_channel_prompt'):
@@ -384,28 +376,42 @@ class SlackScraper:
                             attachment['from_url'] = None
                         if not attachment.get('is_msg_unfurl'):
                             attachment['is_msg_unfurl'] = None
+                        if not attachment.get('is_animated'):
+                            attachment['is_animated'] = None
                         if not attachment.get('author_id'):
                             attachment['author_id'] = None
                         if not attachment.get('channel_team'):
                             attachment['channel_team'] = None
                         if not attachment.get('channel_id'):
                             attachment['channel_id'] = None
-                if message.get('root') and message['root'].get('files'):
-                    del message['root']['files']
+                        if not attachment.get('footer_icon'):                       
+                            attachment['footer_icon'] = None
+                        if not attachment.get('footer'):                       
+                            attachment['footer'] = None
+                        if attachment.get('pinned_to'):
+                            del item['pinned_to']
+                        if attachment.get('pinned_info'):
+                            del item['pinned_info']
+                if line.get('root') and line['root'].get('files'):
+                    del line['root']['files']
 
 
-                if message.get('threads'):
-                    for thread in message['threads']:
-                        if thread.get("blocks"):
-                            thread['blocks'] = [str(thread['blocks'])]
-                        if not thread.get('old_name'):
-                            thread['old_name'] = None
-                        if not thread.get('name'):
-                            thread['name'] = None
-                        if not thread.get('purpose'):
-                            thread['purpose'] = None
-                        if thread.get('root') and thread['root'].get('attachments'):
-                            for attachment in thread['root']['attachments']:
+                if line.get('threads'):
+                    for item in line['threads']:
+                        if item.get("blocks"):
+                            item['blocks'] = [str(item['blocks'])]
+                        if not item.get('old_name'):
+                            item['old_name'] = None
+                        if not item.get('name'):
+                            item['name'] = None
+                        if not item.get('purpose'):
+                            item['purpose'] = None
+                        if item.get('pinned_to'):
+                            del item['pinned_to']
+                        if item.get('pinned_info'):
+                            del item['pinned_info']
+                        if item.get('root') and item['root'].get('attachments'):
+                            for attachment in item['root']['attachments']:
                                 if attachment.get('blocks'):
                                     attachment['blocks'] = [str(attachment['blocks'])]
                                 if not attachment.get('thumb_url'):
@@ -424,7 +430,7 @@ class SlackScraper:
                                     attachment['image_width'] = None
                                 if not attachment.get('image_height'):                       
                                     attachment['image_height'] = None
-                                if not attachment.get('image_bytes'):                       
+                                if not attachment.get('image_bytes'):                     
                                     attachment['image_bytes'] = None
                                 if not attachment.get('from_url'):                       
                                     attachment['from_url'] = None
@@ -436,16 +442,20 @@ class SlackScraper:
                                     attachment['fallback'] = None
                                 if not attachment.get('is_share'):                       
                                     attachment['is_share'] = None
+                                if not attachment.get('is_reply_unfurl'):                       
+                                    attachment['is_reply_unfurl'] = None
                                 if not attachment.get('service_name'):                       
                                     attachment['service_name'] = None
                                 if attachment.get('message_blocks'):
                                     attachment['message_blocks'] = [str(attachment['message_blocks'])]
-                        if thread.get('root') and thread['root'].get('blocks'):
-                            thread['root']['blocks'] = [str(thread['root']['blocks'])]
-                        if thread.get('root') and thread['root'].get('files'):
-                            del thread['root']['files']
-                        if thread.get('attachments'):
-                            for attachment in thread['attachments']:
+                                if attachment.get('files'):
+                                    del attachment['files']
+                        if item.get('root') and item['root'].get('blocks'):
+                            item['root']['blocks'] = [str(item['root']['blocks'])]
+                        if item.get('root') and item['root'].get('files'):
+                            del item['root']['files']
+                        if item.get('attachments'):
+                            for attachment in item['attachments']:
                                 if attachment.get('blocks'):
                                     attachment['blocks'] = [str(attachment['blocks'])]
                                 if attachment.get('message_blocks'):
@@ -472,6 +482,8 @@ class SlackScraper:
                                     attachment['from_url'] = None
                                 if not attachment.get('is_msg_unfurl'):
                                     attachment['is_msg_unfurl'] = None
+                                if not attachment.get('is_animated'):
+                                    attachment['is_animated'] = None
                                 if not attachment.get('author_id'):
                                     attachment['author_id'] = None
                                 if not attachment.get('channel_team'):
@@ -482,13 +494,13 @@ class SlackScraper:
                                     attachment['footer_icon'] = None
                                 if not attachment.get('footer'):                       
                                     attachment['footer'] = None
-                                if thread.get('pinned_to'):
-                                    del thread['pinned_to']
-                                if thread.get('pinned_info'):
-                                    del thread['pinned_info']
-                json.dump(message, fp)
+                                if attachment.get('pinned_to'):
+                                    del item['pinned_to']
+                                if attachment.get('pinned_info'):
+                                    del item['pinned_info']
+                json.dump(line, fp)
                 fp.write('\n')
-            print("Done")
+
         return True
     
     def download_and_verify_file(self, file_url, storage_location='SlackDownloads') -> str:
