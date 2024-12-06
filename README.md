@@ -1,16 +1,15 @@
 # Slack Scraper
 In this project I implement an `ELT (Extract Load Transform)` automation that accesses a<br>
-given Slack workspace and does the following:
-- Downloads all messages in private and public channels
-- Downloads threads related to every message and nests them inside the related message
+given Slack workspace using the Slack Web API and does the following:
+- Downloads all messages and threads in private and public channels.
 - Downloads files and attachments related to each message or thread.
 
 ### Extract, Load, Transform
 The automation extracts data from Slack using the Web API, it then loads the data to Google<br>
 Cloud Storage. This includes the files and a JSONL file containing the messages. From GCS<br>
 the data is loaded to Google BigQuery where it can be transformed and put to use.<br>
-"ETL is a bad practice. ELT is a good practice..." ~ my manager. In case you're wondering why<br>
-I did ELT instead of ETL.<br><br>
+In case you are wondering why I did ELT instead of ETL, allow me to quote my manager on this:<br>
+"ETL is a bad practice. ELT is a good practice..."<br><br>
 Slack Web API has a limit of 999 on the number of messages that can be downloaded with a single<br>
 API call to `conversations.history`. For channels with large conversations or for workspaces<br>
 that have been around for long that limit is not enough to extrac all messages.<br>
