@@ -24,8 +24,8 @@ class SlackScraper:
         self.checkpoint_file = Path('checkpoints.json')
         self.checkpoint_file.touch(exist_ok=True)
         self.read_channels = {}
-        self.storage_client = storage.Client(project="rtux-sandbox")
-        self.storage_bucket = self.storage_client.bucket("slack-messages-scraping")
+        self.storage_client = storage.Client(project=os.environ['GCP_PROJECT'])
+        self.storage_bucket = self.storage_client.bucket(os.environ['GCP_STORAGE_BUCKET'])
         self.last_checkpoint = 0
     
     def read_checkpoints(self, checkpoint_file: Path) -> dict:
