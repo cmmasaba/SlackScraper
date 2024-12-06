@@ -17,7 +17,7 @@ that have been around for long that limit is not enough to extrac all messages.<
 With a few modifications to this implementation, this automation is capable of downloading all<br>
 messages in channels even if the number of messages is larger than 999. For example in the use<br>
 case at our office it was able to download all messages going back to 2019 till date. This was<br>
-about 100k+ messages, threads and related files.<br>
+about `285,934` messages and their related files in a span of `4 days`.<br><br>
 At that level of magnitude; scaling, runtime and robustness are important factors to put into<br>
 consideration. Runtime because the automation could end up taking unreasonably long to download<br>
 the content if inefficiently designed. Robustness because the automation needs to handle errors<br>
@@ -70,20 +70,41 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
 
     ```
 7. Follow the instructions at this [link](https://cloud.google.com/iam/docs/keys-create-delete) to download the service account key created above and save it in<br> the `src` folder. You can rename it to a more friendly name.
-
-8. Set the environment varible pointing to the service account key file.
-    ```bash
-
-    export GOOGLE_APPLICATION_CREDENTIALS=your-service-account-key-file-path
-
-    i.e export GOOGLE_APPLICATION_CREDENTIALS=first-project-112233.json
+8. Follow the instructions on this [link](https://api.slack.com/quickstart) to create a Slack App and download the bot token. Only the first<br>
+three steps are relevant for us. When requesting scopes, request for the following:
+    ```
+    
+    channels:history
+    channels:read
+    groups:history
+    groups:read
+    users:read
 
     ```
-9. Start the automation.
+9. Set the environment varibles in the `src/.env` file.
+    ```
+
+    GOOGLE_APPLICATION_CREDENTIALS=path-to-your-service-account-key-file
+    SLACK_BOT_TOKEN=xxxxxx
+
+    ```
+10. Start the automation.
     ```bash
 
     python main.py
 
     ```
 
-As the automation executes, it outputs log information to stdout that you can use to follow along.
+As the automation executes, it outputs log information to stdout that you can use to follow along.<br>
+The downloaded messages and files are stored in `SlackDownloads` folder inside `Messages` and <br>
+`Files` subfolders respectively.
+
+### Adjustments
+If you don't need to store your scraped data on Google Cloud Platform, comment out the following<br>
+lines to disable the feature of saving to Google Cloud Storage:
+```
+
+#73, #74, #214, #223, #236, #245, #260, #261 
+
+```
+In the setup instructions, skip the parts relevant to Google Cloud Platform.
