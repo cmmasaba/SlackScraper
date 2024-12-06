@@ -282,33 +282,33 @@ class SlackScraper:
             True if formatted with no errors, otherwise False.
         '''
         with open(file_path, 'r') as fp:
-            data = []
-            for linenumber, line in enumerate(fp):
+            messages = []
+            for linenumber, message in enumerate(fp):
                 try:
-                    data.append(json.loads(line))
+                    messages.append(json.loads(message))
                 except json.JSONDecodeError as e:
                     print(f"Failed on line {linenumber}")
                     print(e)
                     return False
 
         with open(file_path, 'w') as fp:
-            for line in data:
-                if not line.get('old_name'):
-                    line['old_name'] = None
-                if not line.get('name'):
-                    line['name'] = None
-                if not line.get('purpose'):
-                    line['purpose'] = None
-                if line.get("blocks"):
-                    line['blocks'] = [str(line['blocks'])]
-                if line.get('root') and line['root'].get('blocks'):
-                    line['root']['blocks'] = [str(line['root']['blocks'])]
-                if line.get('pinned_to'):
-                    del line['pinned_to']
-                if line.get('pinned_info'):
-                    del line['pinned_info']
-                if line.get('root') and line['root'].get('attachments'):
-                    for attachment in line['root']['attachments']:
+            for message in messages:
+                if not message.get('old_name'):
+                    message['old_name'] = None
+                if not message.get('name'):
+                    message['name'] = None
+                if not message.get('purpose'):
+                    message['purpose'] = None
+                if message.get("blocks"):
+                    message['blocks'] = [str(message['blocks'])]
+                if message.get('root') and message['root'].get('blocks'):
+                    message['root']['blocks'] = [str(message['root']['blocks'])]
+                if message.get('pinned_to'):
+                    del message['pinned_to']
+                if message.get('pinned_info'):
+                    del message['pinned_info']
+                if message.get('root') and message['root'].get('attachments'):
+                    for attachment in message['root']['attachments']:
                         if attachment.get('blocks'):
                             attachment['blocks'] = [str(attachment['blocks'])]
                         if not attachment.get('thumb_url'):
@@ -347,8 +347,8 @@ class SlackScraper:
                             attachment['message_blocks'] = [str(attachment['message_blocks'])]
                         if attachment.get('files'):
                             del attachment['files']
-                if line.get('attachments'):
-                    for attachment in line['attachments']:
+                if message.get('attachments'):
+                    for attachment in message['attachments']:
                         if attachment.get('blocks'):
                             attachment['blocks'] = [str(attachment['blocks'])]
                         if not attachment.get('private_channel_prompt'):
@@ -388,29 +388,29 @@ class SlackScraper:
                         if not attachment.get('footer'):                       
                             attachment['footer'] = None
                         if attachment.get('pinned_to'):
-                            del item['pinned_to']
+                            del thread['pinned_to']
                         if attachment.get('pinned_info'):
-                            del item['pinned_info']
-                if line.get('root') and line['root'].get('files'):
-                    del line['root']['files']
+                            del thread['pinned_info']
+                if message.get('root') and message['root'].get('files'):
+                    del message['root']['files']
 
 
-                if line.get('threads'):
-                    for item in line['threads']:
-                        if item.get("blocks"):
-                            item['blocks'] = [str(item['blocks'])]
-                        if not item.get('old_name'):
-                            item['old_name'] = None
-                        if not item.get('name'):
-                            item['name'] = None
-                        if not item.get('purpose'):
-                            item['purpose'] = None
-                        if item.get('pinned_to'):
-                            del item['pinned_to']
-                        if item.get('pinned_info'):
-                            del item['pinned_info']
-                        if item.get('root') and item['root'].get('attachments'):
-                            for attachment in item['root']['attachments']:
+                if message.get('threads'):
+                    for thread in message['threads']:
+                        if thread.get("blocks"):
+                            thread['blocks'] = [str(thread['blocks'])]
+                        if not thread.get('old_name'):
+                            thread['old_name'] = None
+                        if not thread.get('name'):
+                            thread['name'] = None
+                        if not thread.get('purpose'):
+                            thread['purpose'] = None
+                        if thread.get('pinned_to'):
+                            del thread['pinned_to']
+                        if thread.get('pinned_info'):
+                            del thread['pinned_info']
+                        if thread.get('root') and thread['root'].get('attachments'):
+                            for attachment in thread['root']['attachments']:
                                 if attachment.get('blocks'):
                                     attachment['blocks'] = [str(attachment['blocks'])]
                                 if not attachment.get('thumb_url'):
@@ -449,12 +449,12 @@ class SlackScraper:
                                     attachment['message_blocks'] = [str(attachment['message_blocks'])]
                                 if attachment.get('files'):
                                     del attachment['files']
-                        if item.get('root') and item['root'].get('blocks'):
-                            item['root']['blocks'] = [str(item['root']['blocks'])]
-                        if item.get('root') and item['root'].get('files'):
-                            del item['root']['files']
-                        if item.get('attachments'):
-                            for attachment in item['attachments']:
+                        if thread.get('root') and thread['root'].get('blocks'):
+                            thread['root']['blocks'] = [str(thread['root']['blocks'])]
+                        if thread.get('root') and thread['root'].get('files'):
+                            del thread['root']['files']
+                        if thread.get('attachments'):
+                            for attachment in thread['attachments']:
                                 if attachment.get('blocks'):
                                     attachment['blocks'] = [str(attachment['blocks'])]
                                 if attachment.get('message_blocks'):
@@ -494,10 +494,10 @@ class SlackScraper:
                                 if not attachment.get('footer'):                       
                                     attachment['footer'] = None
                                 if attachment.get('pinned_to'):
-                                    del item['pinned_to']
+                                    del thread['pinned_to']
                                 if attachment.get('pinned_info'):
-                                    del item['pinned_info']
-                json.dump(line, fp)
+                                    del thread['pinned_info']
+                json.dump(message, fp)
                 fp.write('\n')
 
         return True
