@@ -8,4 +8,5 @@ def main():
     app.start()
     print('Finished successfully.')
 
-main()
+if __name__ == '__main__':
+    main()
