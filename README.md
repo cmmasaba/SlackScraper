@@ -107,3 +107,11 @@ lines to disable the feature of saving to Google Cloud Storage:
 
 ```
 In the setup instructions, skip the parts relevant to Google Cloud Platform.
+
+### License
+Refer to the [LICENCSE](/LICENSE) file for terms of usage. 
+
+### Contact
+For inquiries, issues or source contributions, please contact `mmasabacollins9@gmail.com`.
+
+&copy; Collins Mmasaba 2024
