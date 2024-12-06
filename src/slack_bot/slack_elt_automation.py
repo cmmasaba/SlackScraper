@@ -631,3 +631,6 @@ class SlackScraper:
             counter += 1
             
         return file_path
+    
+    def start(self,):
+        pass
