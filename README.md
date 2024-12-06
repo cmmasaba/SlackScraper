@@ -108,7 +108,7 @@ In the setup instructions, skip the parts relevant to Google Cloud Platform.<br>
 Set the boolean variable in line 4 of [src/main.py](src/main.py) to `False`
 
 ### License
-Refer to the [LICENCSE](/LICENSE) file for terms of usage. 
+Refer to the [LICENCSE](LICENSE) file for terms of usage. 
 
 ### Contact
 For inquiries, issues or source contributions, please contact `mmasabacollins9@gmail.com`.
