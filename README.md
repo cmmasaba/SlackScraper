@@ -101,7 +101,7 @@ If you don't need to store your scraped data on Google Cloud Platform, comment o
 lines to disable the feature of saving to Google Cloud Storage:
 ```
 
-#73, #74, #214, #223, #236, #245, #260, #261 
+#73, #74, #214, #223, #236, #245, #260, #261
 
 ```
 In the setup instructions, skip the parts relevant to Google Cloud Platform.
