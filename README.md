@@ -61,8 +61,6 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
    ```
 
    - BigQuery Job User
-   - Secret Manager Secret Accessor
-   - Secret Manager Viewer
    - Storage Object Creator
    - Storage Object User
    - Storage Object Viewer
