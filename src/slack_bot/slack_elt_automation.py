@@ -653,7 +653,7 @@ class SlackScraper:
         finally:
             self.stop()
     
-    def stop(self,):
+    def _stop(self,):
         """
         Stop the bot and perform clean up operations.
         """
