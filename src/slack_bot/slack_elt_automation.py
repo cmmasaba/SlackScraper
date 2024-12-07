@@ -30,7 +30,7 @@ class SlackScraper:
         self.last_checkpoint = 0
         self.save_to_cloud = save_to_cloud
     
-    def read_checkpoints(self, checkpoint_file: Path) -> dict:
+    def _read_checkpoints(self, checkpoint_file: Path) -> dict:
         """
         Read the checkpoint to determine where to resume.
         Args:
@@ -46,7 +46,7 @@ class SlackScraper:
         except json.decoder.JSONDecodeError:
             return {}
     
-    def write_checkpoint(self, checkpoint_file: Path, channel_name: str, message_number: int) -> None:
+    def _write_checkpoint(self, checkpoint_file: Path, channel_name: str, message_number: int) -> None:
         """
         Write each channel name on a new line to the checkpoint file.
         Args:
@@ -75,7 +75,7 @@ class SlackScraper:
         self.gcs_add_directory('users')
         self.gcs_add_file(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
 
-    def directory_exists(self, directory_name) -> bool:
+    def _directory_exists(self, directory_name) -> bool:
         """
         Check if directory_name is in the bucket.
 
@@ -91,7 +91,7 @@ class SlackScraper:
         
         return len(blobs) > 0
 
-    def gcs_add_directory(self, directory_name: str) -> bool:
+    def _gcs_add_directory(self, directory_name: str) -> bool:
         """
         Add an empty directory to the cloud storage bucket.
     
@@ -100,7 +100,7 @@ class SlackScraper:
         Returns:
             True to signal success.
         """
-        if not self.directory_exists(directory_name):
+        if not self._directory_exists(directory_name):
             if directory_name[-1] != '/':
                 directory_name = directory_name + '/'                   # dir names must end with a /
 
@@ -108,7 +108,7 @@ class SlackScraper:
             blob.upload_from_string("", content_type="application/x-www-form-urlencoded:charset=UTF-8")
         return True
     
-    def gcs_add_file(self, file_path, directory_name) -> str:
+    def _gcs_add_file(self, file_path, directory_name) -> str:
         """
         Add a file to the cloud storage bucket.
     
@@ -213,16 +213,16 @@ class SlackScraper:
                             for threaded_reply in threaded_replies:
                                 file_paths = []
                                 if threaded_reply.get('files'):
-                                    self.gcs_add_directory(f'files/{current_date}/{channel_name}')
+                                    self._gcs_add_directory(f'files/{current_date}/{channel_name}')
                                     for file in threaded_reply.get('files'):
                                         if file.get('url_private_download'):
-                                            file_path = self.download_and_verify_slack_file(
+                                            file_path = self._download_and_verify_slack_file(
                                                             file.get('url_private_download'),
                                                             f'SlackDownloads/Files/{current_date}/{channel_name}'
                                                         )
                                             if file_path:
                                                 try:
-                                                    file_storage_path = self.gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
+                                                    file_storage_path = self._gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
                                                     file_paths.append({
                                                         'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
                                                         'filename': file.get('name'),
@@ -235,16 +235,16 @@ class SlackScraper:
                         if message:
                             file_paths = []
                             if message.get('files'):
-                                self.gcs_add_directory(f'files/{current_date}/{channel_name}')
+                                self._gcs_add_directory(f'files/{current_date}/{channel_name}')
                                 for file in message.get('files'):
                                     if file.get('url_private_download'):
-                                        file_path = self.download_and_verify_slack_file(
+                                        file_path = self._download_and_verify_slack_file(
                                                         file.get('url_private_download'),
                                                         f'SlackDownloads/Files/{current_date}/{channel_name}'
                                                     )
                                         if file_path:
                                             try:
-                                                file_storage_path = self.gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
+                                                file_storage_path = self._gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
                                                 file_paths.append({
                                                     'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
                                                     'filename': file.get('name'),
@@ -256,11 +256,12 @@ class SlackScraper:
                             message['threads'] = threaded_replies
                             json.dump(message, messages_fp)                 # Save in JSONL format
                             messages_fp.write('\n')
-                    self.write_checkpoint(self.checkpoint_file, channel_name, message_number + 1)
+                    self._write_checkpoint(self.checkpoint_file, channel_name, message_number + 1)
                     message_number = 0                                      # In case it fails at the start of the next channel, message number should be zero
                     sleep(5)
-                self.gcs_add_directory(f'messages/')
-                self.gcs_add_file(f'messages/slack_{current_date}.jsonl', f'messages/')
+                self._gcs_add_directory(f'messages/')
+                self._gcs_add_file(f'SlackDownloads/Messages/slack_{current_date}.jsonl', f'messages/')
+                self._format_nested_json_fields(f'SlackDownloads/Messages/slack_{current_date}.jsonl')
             return True
         except (SlackApiError, IncompleteRead) as e:
             print(f"Error: {e}")
@@ -273,7 +274,7 @@ class SlackScraper:
             finally:
                 return False
     
-    def format_nested_json_fields(self, file_path: str) -> bool:
+    def _format_nested_json_fields(self, file_path: str) -> bool:
         '''
         Format deeply nested JSON fields as strings to make loading the data to 
         BigQuery easier. Rewrites the formatted JSON entries back to the given
@@ -515,7 +516,7 @@ class SlackScraper:
             The path to where the file was stored.
         """
         # Download the file
-        file_path = self.download_slack_file(file_url, storage_location)
+        file_path = self._download_slack_file(file_url, storage_location)
 
         
         if file_path:
@@ -565,7 +566,7 @@ class SlackScraper:
         except IOError as e:
             return False
     
-    def download_file(self, file_url, save_dir='SlackDownloads') -> str:
+    def _download_file(self, file_url, save_dir='SlackDownloads') -> str:
         """
         Download a file from Slack API and save it to local storage.
         Args:
@@ -600,7 +601,7 @@ class SlackScraper:
             
             # Create save directory if it doesn't exist
             Path(save_dir).mkdir(parents=True, exist_ok=True)
-            save_path = self.get_next_filename(os.path.join(save_dir, filename))
+            save_path = self._get_next_filename(os.path.join(save_dir, filename))
             
             # Save the file in binary mode
             with open(save_path, 'wb') as f:
@@ -613,7 +614,7 @@ class SlackScraper:
         except requests.exceptions.RequestException as e:
             return None
     
-    def get_next_filename(self, file_path) -> str:
+    def _get_next_filename(self, file_path) -> str:
         """
         Add incremental number to a file name it the name already exists.
         Example: file.txt, file(1).txt, file(2).txt, etc.
