@@ -66,7 +66,7 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
    - Storage Object Viewer
 
     ```
-7. Follow the instructions at this [link](https://cloud.google.com/iam/docs/keys-create-delete) to download the service account key created above and save it in<br> the root folder. You can rename it to a more friendly name.
+7. Follow the instructions at this [link](https://cloud.google.com/iam/docs/keys-create-delete) to download the service account key created above and save it in<br> the root folder. You can rename it to a more friendly name. You will use it in step 9.
 8. Follow the instructions at this [link](https://api.slack.com/quickstart) to create a Slack App and download the bot token. Only the first<br>
 three steps are relevant for this project. When requesting scopes, select for the following:
     ```
