@@ -505,7 +505,7 @@ class SlackScraper:
 
         return True
     
-    def download_and_verify_file(self, file_url, storage_location='SlackDownloads') -> str:
+    def _download_and_verify_file(self, file_url, storage_location='SlackDownloads') -> str:
         """
         Download files attached to messages and threads.
 
