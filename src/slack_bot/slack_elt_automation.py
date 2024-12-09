@@ -69,7 +69,7 @@ class SlackScraper:
         is_call_successful = False
         while not is_call_successful:
             try:
-                users = self.client.users_list()
+                response = self.client.users_list()
                 is_call_successful = True
             except SlackApiError as e:
                 print(f"Error: {e}")
@@ -79,7 +79,7 @@ class SlackScraper:
 
         Path(f'SlackDownloads/Users/').mkdir(parents=True, exist_ok=True)
         with open(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'w') as fp:
-            for user in users['members']:
+            for user in response['members']:
                 json.dump(user, fp)
                 fp.write('\n')
         self._gcs_add_directory('users')
@@ -200,7 +200,7 @@ class SlackScraper:
             Path(f'SlackDownloads/Messages/slack_{current_date}.jsonl').touch(exist_ok=True)
 
             with open(f'SlackDownloads/Messages/slack_{current_date}.jsonl', 'a') as messages_fp:
-                timestamp_since_last_backup = datetime.timestamp(datetime.now() - timedelta(days=4))
+                timestamp_since_last_backup = datetime.timestamp(datetime.now() - timedelta(days=1))
                 for channel_id, channel_name in channels.items():
                     messages = []
                     self.last_checkpoint = 0
