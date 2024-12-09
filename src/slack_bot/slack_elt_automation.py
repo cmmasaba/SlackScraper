@@ -711,7 +711,7 @@ class SlackScraper:
     def _stop(self,):
         """
         Stop the bot and perform clean up operations.
-        
+        """
         import shutil                               # Delete the downloaded content
 
         try:
@@ -721,5 +721,3 @@ class SlackScraper:
                 shutil.rmtree(self.downloads_folder)
         except Exception as e:
             print(f'Error: {e}', end='\n')
-        """
-        pass
