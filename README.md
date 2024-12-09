@@ -87,7 +87,7 @@ three steps are relevant for this project. When requesting scopes, select for th
     ```
 
     GOOGLE_APPLICATION_CREDENTIALS=path-to-your-service-account-key-file
-    SLACK_BOT_TOKEN=xxxxxx
+    SLACK_BOT_TOKEN=slack-bot-token
     GCP_PROJECT=project-name-in-gcp
     GCP_STORAGE_BUCKET=bucket-name-in-gcp
     TABLE_ID=table-id-in-bigquery
