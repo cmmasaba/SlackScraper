@@ -5,7 +5,7 @@ import json                                             # Reading and writing to
 from datetime import datetime, timedelta                # Calculating the date to append to file names
 from time import sleep                                  # Suspending the bot when necessary
 from pathlib import Path                                # Accessing files in storage
-from google.cloud import storage                        # Interacting with Google Cloud Storage
+from google.cloud import storage, bigquery              # Interacting with Google Cloud Storage
 from http. client import IncompleteRead                 # Error handling for unstable network conditions
 from dotenv import load_dotenv                          # Handling environment variables
 import requests                                         # Used for downloading files
@@ -21,16 +21,18 @@ class SlackScraper:
         self.slack_bot_token = os.environ['SLACK_BOT_TOKEN']
         self.app = App(token=self.slack_bot_token)
         self.client = self.app.client
-        self.checkpoint_file = Path('checkpoints.json')
+        self.downloads_folder = Path('SlackDownloads')
+        self.downloads_folder.mkdir(exist_ok=True)
+        self.checkpoint_file = Path('SlackDownloads/checkpoints.json')
         self.checkpoint_file.touch(exist_ok=True)
-        self.downloads_folder = Path('SlackDownloads').mkdir(exist_ok=True)
         self.read_channels = {}
         self.storage_client = storage.Client(project=os.environ['GCP_PROJECT'])
+        self.bigquery_client = bigquery.Client()
         self.storage_bucket = self.storage_client.bucket(os.environ['GCP_STORAGE_BUCKET'])
         self.last_checkpoint = 0
         self.save_to_cloud = save_to_cloud
     
-    def _read_checkpoints(self, checkpoint_file: Path) -> dict:
+    def _read_checkpoints(self) -> dict:
         """
         Read the checkpoint to determine where to resume.
         Args:
@@ -39,41 +41,49 @@ class SlackScraper:
             A list of channels that have been written, or an empty list if there's no checkpoints.
         """
         try:
-            if checkpoint_file.exists():
-                with checkpoint_file.open('r') as fp:
+            if self.checkpoint_file.exists():
+                with self.checkpoint_file.open('r') as fp:
                     return json.load(fp)
             return {}
         except json.decoder.JSONDecodeError:
             return {}
     
-    def _write_checkpoint(self, checkpoint_file: Path, channel_name: str, message_number: int) -> None:
+    def _write_checkpoint(self,channel_name: str, message_number: int) -> None:
         """
         Write each channel name on a new line to the checkpoint file.
         Args:
-            checkpoint_file: the path of the file where checkpoint data is stored.
             channel_name: the name of the channel being written.
             message_number: the number of the message being written.
         Returns:
             None
         """
-        checkpoints = self.read_checkpoint(checkpoint_file)
+        checkpoints = self._read_checkpoints()
         checkpoints[channel_name] = message_number
-        with checkpoint_file.open('w') as fp:
+        with self.checkpoint_file.open('w') as fp:
             json.dump(checkpoints, fp, indent=4)
     
     def get_slack_workspace_members(self) -> None:
         """
         Retrieve the users in the Slack workspace and store the info in JSONL format.
         """
-        users = self.client.users_list()
+        is_call_successful = False
+        while not is_call_successful:
+            try:
+                users = self.client.users_list()
+                is_call_successful = True
+            except SlackApiError as e:
+                print(f"Error: {e}")
+                sleep(15)
+            except IncompleteRead:
+                print("Unable to fetch Slack members, unstable network", end='\n')
 
         Path(f'SlackDownloads/Users/').mkdir(parents=True, exist_ok=True)
         with open(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'w') as fp:
             for user in users['members']:
                 json.dump(user, fp)
                 fp.write('\n')
-        self.gcs_add_directory('users')
-        self.gcs_add_file(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
+        self._gcs_add_directory('users')
+        self._gcs_add_file(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
 
     def _directory_exists(self, directory_name) -> bool:
         """
@@ -125,41 +135,53 @@ class SlackScraper:
         blob.upload_from_filename(file_path)
         return blob.self_link
     
-    def get_private_slack_channel_ids(self) -> dict:
+    def get_private_slack_channels_ids(self) -> dict:
         """
         Get the private channel IDs and names from the Slack workspace and store the infor in JSON format.
         Returns:
             a dictionary of channel id and channel name the private channels in the workspace.
         """
-        try:
-            channels = {}
-            for result in self.client.conversations_list(types="private_channel"):
-                for channel in result["channels"]:
-                    channels[channel["id"]] = channel['name']
-            Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
-            with open('SlackDownloads/Channels/private_channels.json', 'w') as fp:
-                json.dump(channels, fp, indent=4)
-            return channels
-        except SlackApiError as e:
-            print(f"Error: {e}")
+        is_call_successful = False
+        while not is_call_successful:
+            try:
+                channels = {}
+                for result in self.client.conversations_list(types="private_channel"):
+                    for channel in result["channels"]:
+                        channels[channel["id"]] = channel['name']
+                Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
+                with open('SlackDownloads/Channels/private_channels.json', 'w') as fp:
+                    json.dump(channels, fp, indent=4)
+                is_call_successful = False
+                return channels
+            except SlackApiError as e:
+                print(f"Error: {e}")
+                sleep(15)
+            except IncompleteRead:
+                print("Unable to fetch Slack channels IDs, unstable network", end='\n')
     
-    def get_public_slack_channel_ids(self) -> dict:
+    def get_public_slack_channels_ids(self) -> dict:
         """
         Get the public channel IDs and names from the Slack workspace and store the infor in JSON format.
         Returns:
             a dictionary of channel id and channel name the public channels in the workspace.
         """
-        try:
-            channels = {}
-            for result in self.client.conversations_list(types="public_channel"):
-                for channel in result["channels"]:
-                    channels[channel["id"]] = channel['name']
-            Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
-            with open('SlackDownloads/Channels/public_channels.json', 'w') as fp:
-                json.dump(channels, fp, indent=4)
-            return channels
-        except SlackApiError as e:
-            print(f"Error: {e}")
+        is_call_successful = False
+        while is_call_successful:
+            try:
+                channels = {}
+                for result in self.client.conversations_list(types="public_channel"):
+                    for channel in result["channels"]:
+                        channels[channel["id"]] = channel['name']
+                Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
+                with open('SlackDownloads/Channels/public_channels.json', 'w') as fp:
+                    json.dump(channels, fp, indent=4)
+                is_call_successful = True
+                return channels
+            except SlackApiError as e:
+                print(f"Error: {e}")
+                sleep(15)
+            except IncompleteRead:
+                print("Unable to fetch Slack channels IDs, unstable network", end='\n')
     
     def get_slack_messages(self) -> bool:
         '''
@@ -178,7 +200,7 @@ class SlackScraper:
             Path(f'SlackDownloads/Messages/slack_{current_date}.jsonl').touch(exist_ok=True)
 
             with open(f'SlackDownloads/Messages/slack_{current_date}.jsonl', 'a') as messages_fp:
-                timestamp_since_last_backup = datetime.now() - timedelta(days=1)
+                timestamp_since_last_backup = datetime.timestamp(datetime.now() - timedelta(days=4))
                 for channel_id, channel_name in channels.items():
                     messages = []
                     self.last_checkpoint = 0
@@ -197,24 +219,255 @@ class SlackScraper:
                         messages = conversation_history['messages']
                     print(f'Number of messages in {channel_name}: {len(messages)}', end='\n')
 
-                    for message_number, message in enumerate(messages):
-                        if self.last_checkpoint == len(messages):
-                            message_number = self.last_checkpoint - 1
-                            break
-                        if message_number < self.last_checkpoint:
-                            continue
-                        print('Message: ', len(messages) - message_number, end='\n')
-                        message['channel_name'] = channel_name
-                        message['channel_id'] = channel_id
+                    if len(messages) > 0:
+                        for message_number, message in enumerate(messages):
+                            if self.last_checkpoint == len(messages):
+                                message_number = self.last_checkpoint - 1
+                                break
+                            if message_number < self.last_checkpoint:
+                                continue
+                            print('Message: ', len(messages) - message_number, end='\n')
+                            message['channel_name'] = channel_name
+                            message['channel_id'] = channel_id
 
-                        thread = self.client.conversations_replies(channel=channel_id, ts=message['ts'])
-                        if thread['ok']:
-                            threaded_replies = thread['messages']
-                            for threaded_reply in threaded_replies:
+                            thread = self.client.conversations_replies(channel=channel_id, ts=message['ts'])
+                            if thread['ok']:
+                                threaded_replies = thread['messages']
+                                for thread in threaded_replies:
+                                    if thread.get("blocks"):
+                                        thread['blocks'] = [str(thread['blocks'])]
+                                    if not thread.get('old_name'):
+                                        thread['old_name'] = None
+                                    if not thread.get('name'):
+                                        thread['name'] = None
+                                    if not thread.get('purpose'):
+                                        thread['purpose'] = None
+                                    if thread.get('pinned_to'):
+                                        del thread['pinned_to']
+                                    if thread.get('pinned_info'):
+                                        del thread['pinned_info']
+                                    if thread.get('root') and thread['root'].get('attachments'):
+                                        for attachment in thread['root']['attachments']:
+                                            if attachment.get('blocks'):
+                                                attachment['blocks'] = [str(attachment['blocks'])]
+                                            if not attachment.get('thumb_url'):
+                                                attachment['thumb_url'] = None
+                                            if not attachment.get('thumb_width'):
+                                                attachment['thumb_width'] = None
+                                            if not attachment.get('thumb_height'):
+                                                attachment['thumb_height'] = None
+                                            if  not attachment.get('title'):
+                                                attachment['title'] = None
+                                            if not attachment.get('title_link'):
+                                                attachment['title_link'] = None
+                                            if not attachment.get('image_url'):
+                                                attachment['image_url'] = None
+                                            if not attachment.get('image_width'):                       
+                                                attachment['image_width'] = None
+                                            if not attachment.get('image_height'):                       
+                                                attachment['image_height'] = None
+                                            if not attachment.get('image_bytes'):                     
+                                                attachment['image_bytes'] = None
+                                            if not attachment.get('from_url'):                       
+                                                attachment['from_url'] = None
+                                            if not attachment.get('service_icon'):                       
+                                                attachment['service_icon'] = None
+                                            if not attachment.get('original_url'):                       
+                                                attachment['original_url'] = None
+                                            if not attachment.get('fallback'):                       
+                                                attachment['fallback'] = None
+                                            if not attachment.get('is_share'):                       
+                                                attachment['is_share'] = None
+                                            if not attachment.get('is_reply_unfurl'):                       
+                                                attachment['is_reply_unfurl'] = None
+                                            if not attachment.get('service_name'):                       
+                                                attachment['service_name'] = None
+                                            if attachment.get('message_blocks'):
+                                                attachment['message_blocks'] = [str(attachment['message_blocks'])]
+                                            if attachment.get('files'):
+                                                del attachment['files']
+                                    if thread.get('root') and thread['root'].get('blocks'):
+                                        thread['root']['blocks'] = [str(thread['root']['blocks'])]
+                                    if thread.get('root') and thread['root'].get('files'):
+                                        del thread['root']['files']
+                                    if thread.get('attachments'):
+                                        for attachment in thread['attachments']:
+                                            if attachment.get('blocks'):
+                                                attachment['blocks'] = [str(attachment['blocks'])]
+                                            if attachment.get('message_blocks'):
+                                                attachment['message_blocks'] = [str(attachment['message_blocks'])]
+                                            if attachment.get('files'):
+                                                del attachment['files']
+                                            if not attachment.get('private_channel_prompt'):
+                                                attachment['private_channel_prompt'] = False
+                                            if not attachment.get('author_name'):
+                                                attachment['author_name'] = None
+                                            if not attachment.get('author_link'):
+                                                attachment['author_link'] = None
+                                            if not attachment.get('author_icon'):
+                                                attachment['author_icon'] = None
+                                            if not attachment.get('author_subname'):
+                                                attachment['author_subname'] = None
+                                            if attachment.get('mrkdwn_in'):
+                                                del attachment['mrkdwn_in']
+                                            if not attachment.get('fallback'):
+                                                attachment['fallback'] = None
+                                            if not attachment.get('original_url'):
+                                                attachment['original_url'] = None
+                                            if not attachment.get('from_url'):
+                                                attachment['from_url'] = None
+                                            if not attachment.get('is_msg_unfurl'):
+                                                attachment['is_msg_unfurl'] = None
+                                            if not attachment.get('is_animated'):
+                                                attachment['is_animated'] = None
+                                            if not attachment.get('author_id'):
+                                                attachment['author_id'] = None
+                                            if not attachment.get('channel_team'):
+                                                attachment['channel_team'] = None
+                                            if not attachment.get('channel_id'):
+                                                attachment['channel_id'] = None
+                                            if not attachment.get('footer_icon'):                       
+                                                attachment['footer_icon'] = None
+                                            if not attachment.get('footer'):                       
+                                                attachment['footer'] = None
+                                            if attachment.get('pinned_to'):
+                                                del thread['pinned_to']
+                                            if attachment.get('pinned_info'):
+                                                del thread['pinned_info']
+
+                                    file_paths = []
+                                    if thread.get('files'):
+                                        self._gcs_add_directory(f'files/{current_date}/{channel_name}')
+                                        for file in thread.get('files'):
+                                            if file.get('url_private_download'):
+                                                file_path = self._download_and_verify_slack_file(
+                                                                file.get('url_private_download'),
+                                                                f'SlackDownloads/Files/{current_date}/{channel_name}'
+                                                            )
+                                                if file_path:
+                                                    try:
+                                                        file_storage_path = None
+                                                        file_storage_path = self._gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
+                                                        if file_storage_path:
+                                                            file_paths.append({
+                                                                'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
+                                                                'filename': file.get('name'),
+                                                                'storage_url': file_storage_path
+                                                            })
+                                                        else:
+                                                            file_paths.append({
+                                                                'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
+                                                                'filename': file.get('name'),
+                                                            })
+                                                    except (TimeoutError, ConnectionError):
+                                                        continue
+                                    thread['files'] = file_paths
+
+                            if message:
                                 file_paths = []
-                                if threaded_reply.get('files'):
+                                if not message.get('old_name'):
+                                    message['old_name'] = None
+                                if not message.get('name'):
+                                    message['name'] = None
+                                if not message.get('purpose'):
+                                    message['purpose'] = None
+                                if message.get("blocks"):
+                                    message['blocks'] = [str(message['blocks'])]
+                                if message.get('root') and message['root'].get('blocks'):
+                                    message['root']['blocks'] = [str(message['root']['blocks'])]
+                                if message.get('pinned_to'):
+                                    del message['pinned_to']
+                                if message.get('pinned_info'):
+                                    del message['pinned_info']
+                                if message.get('root') and message['root'].get('attachments'):
+                                    for attachment in message['root']['attachments']:
+                                        if attachment.get('blocks'):
+                                            attachment['blocks'] = [str(attachment['blocks'])]
+                                        if not attachment.get('thumb_url'):
+                                            attachment['thumb_url'] = None
+                                        if not attachment.get('thumb_width'):
+                                            attachment['thumb_width'] = None
+                                        if not attachment.get('thumb_height'):
+                                            attachment['thumb_height'] = None
+                                        if  not attachment.get('title'):
+                                            attachment['title'] = None
+                                        if not attachment.get('title_link'):
+                                            attachment['title_link'] = None
+                                        if not attachment.get('image_url'):
+                                            attachment['image_url'] = None
+                                        if not attachment.get('image_width'):                       
+                                            attachment['image_width'] = None
+                                        if not attachment.get('image_height'):                       
+                                            attachment['image_height'] = None
+                                        if not attachment.get('image_bytes'):                       
+                                            attachment['image_bytes'] = None
+                                        if not attachment.get('from_url'):                       
+                                            attachment['from_url'] = None
+                                        if not attachment.get('service_icon'):                       
+                                            attachment['service_icon'] = None
+                                        if not attachment.get('original_url'):                       
+                                            attachment['original_url'] = None
+                                        if not attachment.get('fallback'):                       
+                                            attachment['fallback'] = None
+                                        if not attachment.get('is_share'):                       
+                                            attachment['is_share'] = None
+                                        if not attachment.get('is_reply_unfurl'):                       
+                                            attachment['is_reply_unfurl'] = None
+                                        if not attachment.get('service_name'):                       
+                                            attachment['service_name'] = None
+                                        if attachment.get('message_blocks'):
+                                            attachment['message_blocks'] = [str(attachment['message_blocks'])]
+                                        if attachment.get('files'):
+                                            del attachment['files']
+                                if message.get('attachments'):
+                                    for attachment in message['attachments']:
+                                        if attachment.get('blocks'):
+                                            attachment['blocks'] = [str(attachment['blocks'])]
+                                        if not attachment.get('private_channel_prompt'):
+                                            attachment['private_channel_prompt'] = None
+                                        if attachment.get('message_blocks'):
+                                            attachment['message_blocks'] = [str(attachment['message_blocks'])]
+                                        if attachment.get('files'):
+                                            del attachment['files']
+                                        if not attachment.get('author_name'):
+                                            attachment['author_name'] = None
+                                        if not attachment.get('author_link'):
+                                            attachment['author_link'] = None
+                                        if not attachment.get('author_icon'):
+                                            attachment['author_icon'] = None
+                                        if not attachment.get('author_subname'):
+                                            attachment['author_subname'] = None
+                                        if attachment.get('mrkdwn_in'):
+                                            del attachment['mrkdwn_in']
+                                        if not attachment.get('fallback'):
+                                            attachment['fallback'] = None
+                                        if not attachment.get('original_url'):
+                                            attachment['original_url'] = None
+                                        if not attachment.get('from_url'):
+                                            attachment['from_url'] = None
+                                        if not attachment.get('is_msg_unfurl'):
+                                            attachment['is_msg_unfurl'] = None
+                                        if not attachment.get('is_animated'):
+                                            attachment['is_animated'] = None
+                                        if not attachment.get('author_id'):
+                                            attachment['author_id'] = None
+                                        if not attachment.get('channel_team'):
+                                            attachment['channel_team'] = None
+                                        if not attachment.get('channel_id'):
+                                            attachment['channel_id'] = None
+                                        if not attachment.get('footer_icon'):                       
+                                            attachment['footer_icon'] = None
+                                        if not attachment.get('footer'):                       
+                                            attachment['footer'] = None
+                                        if attachment.get('pinned_to'):
+                                            del thread['pinned_to']
+                                        if attachment.get('pinned_info'):
+                                            del thread['pinned_info']
+                                if message.get('root') and message['root'].get('files'):
+                                    del message['root']['files']
+                                if message.get('files'):
                                     self._gcs_add_directory(f'files/{current_date}/{channel_name}')
-                                    for file in threaded_reply.get('files'):
+                                    for file in message.get('files'):
                                         if file.get('url_private_download'):
                                             file_path = self._download_and_verify_slack_file(
                                                             file.get('url_private_download'),
@@ -222,48 +475,35 @@ class SlackScraper:
                                                         )
                                             if file_path:
                                                 try:
+                                                    file_storage_path = None
                                                     file_storage_path = self._gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
-                                                    file_paths.append({
-                                                        'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
-                                                        'filename': file.get('name'),
-                                                        'storage_url': file_storage_path
-                                                    })
+                                                    if file_storage_path:
+                                                        file_paths.append({
+                                                            'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
+                                                            'filename': file.get('name'),
+                                                            'storage_url': file_storage_path
+                                                        })
+                                                    else:
+                                                        file_paths.append({
+                                                            'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
+                                                            'filename': file.get('name'),
+                                                        })
                                                 except (TimeoutError, ConnectionError):
                                                     continue
-                                threaded_reply['files'] = file_paths
-
-                        if message:
-                            file_paths = []
-                            if message.get('files'):
-                                self._gcs_add_directory(f'files/{current_date}/{channel_name}')
-                                for file in message.get('files'):
-                                    if file.get('url_private_download'):
-                                        file_path = self._download_and_verify_slack_file(
-                                                        file.get('url_private_download'),
-                                                        f'SlackDownloads/Files/{current_date}/{channel_name}'
-                                                    )
-                                        if file_path:
-                                            try:
-                                                file_storage_path = self._gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
-                                                file_paths.append({
-                                                    'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
-                                                    'filename': file.get('name'),
-                                                    'storage_url': file_storage_path
-                                                })
-                                            except (TimeoutError, ConnectionError):
-                                                continue
-                            message['files'] = file_paths
-                            message['threads'] = threaded_replies
-                            json.dump(message, messages_fp)                 # Save in JSONL format
-                            messages_fp.write('\n')
-                    self._write_checkpoint(self.checkpoint_file, channel_name, message_number + 1)
-                    message_number = 0                                      # In case it fails at the start of the next channel, message number should be zero
-                    sleep(5)
+                                message['files'] = file_paths
+                                message['threads'] = threaded_replies
+                                json.dump(message, messages_fp)                                                                                     # Save in JSONL format
+                                messages_fp.write('\n')
+                        self._write_checkpoint(channel_name, message_number + 1)
+                        message_number = 0                                                                                                          # In case it fails at the start of the next channel, message number should be zero
+                        sleep(5)
                 self._gcs_add_directory(f'messages/')
                 self._gcs_add_file(f'SlackDownloads/Messages/slack_{current_date}.jsonl', f'messages/')
-                self._format_nested_json_fields(f'SlackDownloads/Messages/slack_{current_date}.jsonl')
+                sleep(30)
+                if not self._load_to_bigquery(f'SlackDownloads/Messages/slack_{current_date}.jsonl'):
+                    print('Failed to load the data to BigQuery.')
             return True
-        except (SlackApiError, IncompleteRead) as e:
+        except SlackApiError as e:
             print(f"Error: {e}")
             try:
                 if message_number < self.last_checkpoint:
@@ -273,239 +513,18 @@ class SlackScraper:
                 pass
             finally:
                 return False
+        except IncompleteRead:
+            print("Unable to fetch channel messages, unstable network", end='\n')
+            try:
+                if message_number < self.last_checkpoint:
+                    message_number = self.last_checkpoint
+                self.write_checkpoint(self.checkpoint_file, channel_name, message_number)
+            except UnboundLocalError:
+                pass
+            finally:
+                return False
     
-    def _format_nested_json_fields(self, file_path: str) -> bool:
-        '''
-        Format deeply nested JSON fields as strings to make loading the data to 
-        BigQuery easier. Rewrites the formatted JSON entries back to the given
-        file.
-        Args:
-            file_path: the path to the JSONL file with data to be formatted.
-        Returns:
-            True if formatted with no errors, otherwise False.
-        '''
-        with open(file_path, 'r') as fp:
-            messages = []
-            for linenumber, message in enumerate(fp):
-                try:
-                    messages.append(json.loads(message))
-                except json.JSONDecodeError as e:
-                    print(f"Failed on line {linenumber}")
-                    print(e)
-                    return False
-
-        with open(file_path, 'w') as fp:
-            for message in messages:
-                if not message.get('old_name'):
-                    message['old_name'] = None
-                if not message.get('name'):
-                    message['name'] = None
-                if not message.get('purpose'):
-                    message['purpose'] = None
-                if message.get("blocks"):
-                    message['blocks'] = [str(message['blocks'])]
-                if message.get('root') and message['root'].get('blocks'):
-                    message['root']['blocks'] = [str(message['root']['blocks'])]
-                if message.get('pinned_to'):
-                    del message['pinned_to']
-                if message.get('pinned_info'):
-                    del message['pinned_info']
-                if message.get('root') and message['root'].get('attachments'):
-                    for attachment in message['root']['attachments']:
-                        if attachment.get('blocks'):
-                            attachment['blocks'] = [str(attachment['blocks'])]
-                        if not attachment.get('thumb_url'):
-                            attachment['thumb_url'] = None
-                        if not attachment.get('thumb_width'):
-                            attachment['thumb_width'] = None
-                        if not attachment.get('thumb_height'):
-                            attachment['thumb_height'] = None
-                        if  not attachment.get('title'):
-                            attachment['title'] = None
-                        if not attachment.get('title_link'):
-                            attachment['title_link'] = None
-                        if not attachment.get('image_url'):
-                            attachment['image_url'] = None
-                        if not attachment.get('image_width'):                       
-                            attachment['image_width'] = None
-                        if not attachment.get('image_height'):                       
-                            attachment['image_height'] = None
-                        if not attachment.get('image_bytes'):                       
-                            attachment['image_bytes'] = None
-                        if not attachment.get('from_url'):                       
-                            attachment['from_url'] = None
-                        if not attachment.get('service_icon'):                       
-                            attachment['service_icon'] = None
-                        if not attachment.get('original_url'):                       
-                            attachment['original_url'] = None
-                        if not attachment.get('fallback'):                       
-                            attachment['fallback'] = None
-                        if not attachment.get('is_share'):                       
-                            attachment['is_share'] = None
-                        if not attachment.get('is_reply_unfurl'):                       
-                            attachment['is_reply_unfurl'] = None
-                        if not attachment.get('service_name'):                       
-                            attachment['service_name'] = None
-                        if attachment.get('message_blocks'):
-                            attachment['message_blocks'] = [str(attachment['message_blocks'])]
-                        if attachment.get('files'):
-                            del attachment['files']
-                if message.get('attachments'):
-                    for attachment in message['attachments']:
-                        if attachment.get('blocks'):
-                            attachment['blocks'] = [str(attachment['blocks'])]
-                        if not attachment.get('private_channel_prompt'):
-                            attachment['private_channel_prompt'] = None
-                        if attachment.get('message_blocks'):
-                            attachment['message_blocks'] = [str(attachment['message_blocks'])]
-                        if attachment.get('files'):
-                            del attachment['files']
-                        if not attachment.get('author_name'):
-                            attachment['author_name'] = None
-                        if not attachment.get('author_link'):
-                            attachment['author_link'] = None
-                        if not attachment.get('author_icon'):
-                            attachment['author_icon'] = None
-                        if not attachment.get('author_subname'):
-                            attachment['author_subname'] = None
-                        if attachment.get('mrkdwn_in'):
-                            del attachment['mrkdwn_in']
-                        if not attachment.get('fallback'):
-                            attachment['fallback'] = None
-                        if not attachment.get('original_url'):
-                            attachment['original_url'] = None
-                        if not attachment.get('from_url'):
-                            attachment['from_url'] = None
-                        if not attachment.get('is_msg_unfurl'):
-                            attachment['is_msg_unfurl'] = None
-                        if not attachment.get('is_animated'):
-                            attachment['is_animated'] = None
-                        if not attachment.get('author_id'):
-                            attachment['author_id'] = None
-                        if not attachment.get('channel_team'):
-                            attachment['channel_team'] = None
-                        if not attachment.get('channel_id'):
-                            attachment['channel_id'] = None
-                        if not attachment.get('footer_icon'):                       
-                            attachment['footer_icon'] = None
-                        if not attachment.get('footer'):                       
-                            attachment['footer'] = None
-                        if attachment.get('pinned_to'):
-                            del thread['pinned_to']
-                        if attachment.get('pinned_info'):
-                            del thread['pinned_info']
-                if message.get('root') and message['root'].get('files'):
-                    del message['root']['files']
-
-
-                if message.get('threads'):
-                    for thread in message['threads']:
-                        if thread.get("blocks"):
-                            thread['blocks'] = [str(thread['blocks'])]
-                        if not thread.get('old_name'):
-                            thread['old_name'] = None
-                        if not thread.get('name'):
-                            thread['name'] = None
-                        if not thread.get('purpose'):
-                            thread['purpose'] = None
-                        if thread.get('pinned_to'):
-                            del thread['pinned_to']
-                        if thread.get('pinned_info'):
-                            del thread['pinned_info']
-                        if thread.get('root') and thread['root'].get('attachments'):
-                            for attachment in thread['root']['attachments']:
-                                if attachment.get('blocks'):
-                                    attachment['blocks'] = [str(attachment['blocks'])]
-                                if not attachment.get('thumb_url'):
-                                    attachment['thumb_url'] = None
-                                if not attachment.get('thumb_width'):
-                                    attachment['thumb_width'] = None
-                                if not attachment.get('thumb_height'):
-                                    attachment['thumb_height'] = None
-                                if  not attachment.get('title'):
-                                    attachment['title'] = None
-                                if not attachment.get('title_link'):
-                                    attachment['title_link'] = None
-                                if not attachment.get('image_url'):
-                                    attachment['image_url'] = None
-                                if not attachment.get('image_width'):                       
-                                    attachment['image_width'] = None
-                                if not attachment.get('image_height'):                       
-                                    attachment['image_height'] = None
-                                if not attachment.get('image_bytes'):                     
-                                    attachment['image_bytes'] = None
-                                if not attachment.get('from_url'):                       
-                                    attachment['from_url'] = None
-                                if not attachment.get('service_icon'):                       
-                                    attachment['service_icon'] = None
-                                if not attachment.get('original_url'):                       
-                                    attachment['original_url'] = None
-                                if not attachment.get('fallback'):                       
-                                    attachment['fallback'] = None
-                                if not attachment.get('is_share'):                       
-                                    attachment['is_share'] = None
-                                if not attachment.get('is_reply_unfurl'):                       
-                                    attachment['is_reply_unfurl'] = None
-                                if not attachment.get('service_name'):                       
-                                    attachment['service_name'] = None
-                                if attachment.get('message_blocks'):
-                                    attachment['message_blocks'] = [str(attachment['message_blocks'])]
-                                if attachment.get('files'):
-                                    del attachment['files']
-                        if thread.get('root') and thread['root'].get('blocks'):
-                            thread['root']['blocks'] = [str(thread['root']['blocks'])]
-                        if thread.get('root') and thread['root'].get('files'):
-                            del thread['root']['files']
-                        if thread.get('attachments'):
-                            for attachment in thread['attachments']:
-                                if attachment.get('blocks'):
-                                    attachment['blocks'] = [str(attachment['blocks'])]
-                                if attachment.get('message_blocks'):
-                                    attachment['message_blocks'] = [str(attachment['message_blocks'])]
-                                if attachment.get('files'):
-                                    del attachment['files']
-                                if not attachment.get('private_channel_prompt'):
-                                    attachment['private_channel_prompt'] = None
-                                if not attachment.get('author_name'):
-                                    attachment['author_name'] = None
-                                if not attachment.get('author_link'):
-                                    attachment['author_link'] = None
-                                if not attachment.get('author_icon'):
-                                    attachment['author_icon'] = None
-                                if not attachment.get('author_subname'):
-                                    attachment['author_subname'] = None
-                                if attachment.get('mrkdwn_in'):
-                                    del attachment['mrkdwn_in']
-                                if not attachment.get('fallback'):
-                                    attachment['fallback'] = None
-                                if not attachment.get('original_url'):
-                                    attachment['original_url'] = None
-                                if not attachment.get('from_url'):
-                                    attachment['from_url'] = None
-                                if not attachment.get('is_msg_unfurl'):
-                                    attachment['is_msg_unfurl'] = None
-                                if not attachment.get('is_animated'):
-                                    attachment['is_animated'] = None
-                                if not attachment.get('author_id'):
-                                    attachment['author_id'] = None
-                                if not attachment.get('channel_team'):
-                                    attachment['channel_team'] = None
-                                if not attachment.get('channel_id'):
-                                    attachment['channel_id'] = None
-                                if not attachment.get('footer_icon'):                       
-                                    attachment['footer_icon'] = None
-                                if not attachment.get('footer'):                       
-                                    attachment['footer'] = None
-                                if attachment.get('pinned_to'):
-                                    del thread['pinned_to']
-                                if attachment.get('pinned_info'):
-                                    del thread['pinned_info']
-                json.dump(message, fp)
-                fp.write('\n')
-
-        return True
-    
-    def _download_and_verify_file(self, file_url, storage_location='SlackDownloads') -> str:
+    def _download_and_verify_slack_file(self, file_url, storage_location='SlackDownloads') -> str:
         """
         Download files attached to messages and threads.
 
@@ -566,7 +585,7 @@ class SlackScraper:
         except IOError as e:
             return False
     
-    def _download_file(self, file_url, save_dir='SlackDownloads') -> str:
+    def _download_slack_file(self, file_url, save_dir='SlackDownloads') -> str:
         """
         Download a file from Slack API and save it to local storage.
         Args:
@@ -634,36 +653,73 @@ class SlackScraper:
             counter += 1
             
         return file_path
-    
+
+    def _load_to_bigquery(self, file_path: str) -> bool:
+        '''
+        Load the data to Bigquery.
+
+        Args:
+            file_path: the path to the file to be uploaded.
+        
+        Returns:
+            True if successful, otherwise False.
+        '''
+        table_id = os.environ['TABLE_ID']
+        job_config = bigquery.LoadJobConfig(
+            autodetect=True,
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+        )
+
+        with open(file_path, 'rb') as fp:
+            try:
+                load_job = self.bigquery_client.load_table_from_file(
+                    file_obj=fp,
+                    destination=table_id,
+                    job_config=job_config
+                )
+            except (ValueError, TypeError) as e:
+                print(f'Error while loading to BigQuery: {e}', end='\n')
+                return False
+            
+            try:
+                load_job.result()
+            except Exception as e:
+                print(f'Load job failed/did not complete: {e}', end='\n')
+                return False
+        return True
+
     def start(self,):
         try:
             self.get_slack_workspace_members()
             self.get_private_slack_channels_ids()
+            self.get_public_slack_channels_ids()
 
-            self.read_channels = self.read_checkpoints(self.checkpoint_file)
+            self.read_channels = self._read_checkpoints()
             response = self.get_slack_messages()
 
             while not response:
                 print("Restarting download")
-                self.read_channels = self.read_checkpoints(self.checkpoint_file)
-                sleep(10)
+                self.read_channels = self._read_checkpoints()
+                sleep(15)
                 response = self.get_slack_messages()
-        except KeyboardInterrupt as e:
-            print(f'Stopping the app. Error: {e}')
+        except KeyboardInterrupt:
+            print(f'\nStopping the app.\n')
         finally:
-            self.stop()
+            self._stop()
     
     def _stop(self,):
         """
         Stop the bot and perform clean up operations.
-        """
+        
         import shutil                               # Delete the downloaded content
 
         try:
-            # Delete the checkpoints file and downloads folder after the bot is done
+            # Delete the downloads folder after the bot is done
             # and is saving content to the cloud. Otherwise don't delete.
-            self.checkpoint_file.unlink(missing_ok=True)
             if self.save_to_cloud:
                 shutil.rmtree(self.downloads_folder)
         except Exception as e:
             print(f'Error: {e}', end='\n')
+        """
+        pass
