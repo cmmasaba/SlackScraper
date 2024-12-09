@@ -3,3 +3,10 @@
 
 # Ignore environment variables, secrets and configs
 .env
+
+# Ignore compiled Python code
+__pycache__
+
+# Ignore the output directory
+SlackDownloads/
+
