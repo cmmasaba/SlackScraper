@@ -101,19 +101,9 @@ three steps are relevant for this project. When requesting scopes, select for th
     ```
 
 ### Docker Container
-1. Follow steps `1, 2, 6, 7, 8, 9` above
-2. Clone the repository to your local machine in an appropriate folder.<br>
-    ```bash
-
-    git clone https://github.com/cmmasaba/SlackScraper.git
-
-    ```
-3. Navigate to the root folder.
-    ```bash
-
-    cd SlackScraper/
-
-    ```
+1. Follow steps `1, 2, 6, 7, 8, 9` above.
+2. Sign up for a Docker account at this [link](https://app.docker.com/signup) if you don't have an account. Download Docker Desktop<br>
+ at this [link](https://docs.docker.com/get-started/get-docker/).
 4. Build the Docker image. More instructions can be found at this [link](https://docs.docker.com/get-started/docker-concepts/building-images/build-tag-and-publish-an-image/).
     ```bash
 
@@ -133,7 +123,7 @@ three steps are relevant for this project. When requesting scopes, select for th
     docker run image-id
 
     ```
-    or you can run it in background mode
+    or run it in background mode
     ```
 
     docker run -d image-id
