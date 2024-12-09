@@ -1,10 +1,11 @@
 # Slack Scraper
+## 1.0 Overview
 In this project I implement an `ELT (Extract Load Transform)` automation that accesses a<br>
 given Slack workspace using the Slack Web API and does the following:
 - Downloads all messages and threads in private and public channels.
 - Downloads files and attachments related to each message or thread.
 
-### Extract, Load, Transform
+### 1.1 Extract, Load, Transform
 The automation extracts data from Slack using the Web API, it then loads the data to Google<br>
 Cloud Storage. This includes the files and a JSONL file containing the messages. From GCS<br>
 the data is loaded to Google BigQuery where it can be transformed and put to use.<br>
@@ -24,8 +25,8 @@ gracefully, record progress, and resume from the last checkpoint when interrupte
 considerations include storage, network bandwidth, and compute resources, enter scaling.<br>
 The Dockerfile included computes a small file (~133MB) that can be deployed to the cloud.<br>
 
-## Setup and Running Instructions
-### Command-line Script
+## 2.0 Setup and Running Instructions
+### 2.1 Command-line Script
 1. Clone the repository to your local machine in an appropriate folder.<br>
     ```bash
 
@@ -100,7 +101,7 @@ three steps are relevant for this project. When requesting scopes, select for th
 
     ```
 
-### Docker Container
+### 2.2 Docker Container
 1. Follow steps `1, 2, 6, 7, 8, 9` above.
 2. Sign up for a Docker account at this [link](https://app.docker.com/signup) if you don't have an account. Download Docker Desktop<br>
  at this [link](https://docs.docker.com/get-started/get-docker/).
@@ -134,7 +135,7 @@ As the automation executes, it outputs log information to stdout that you can us
 The downloaded messages and files are stored in `SlackDownloads` folder inside `Messages` and <br>
 `Files` subfolders respectively.
 
-### Adjustments
+### 3.0 Adjustments
 If you don't need to store your scraped data on Google Cloud Platform, comment out the following<br>
 lines to disable the feature of saving to Google Cloud Storage:
 ```
@@ -145,10 +146,10 @@ lines to disable the feature of saving to Google Cloud Storage:
 In the setup instructions, skip the parts relevant to Google Cloud Platform.<br>
 Set the boolean variable in line 4 of [src/main.py](src/main.py) to `False`
 
-### License
+### 4.0 License
 Refer to the [LICENSE](LICENSE) file for terms of usage. 
 
-### Contact
+### 5.0 Contact
 For inquiries, issues or source contributions, get in touch via `mmasabacollins9@gmail.com`.
 
 &copy; Collins Mmasaba 2024
