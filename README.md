@@ -25,6 +25,7 @@ considerations include storage, network bandwidth, and compute resources, enter 
 The Dockerfile included computes a small file (~133MB) that can be deployed to the cloud.<br>
 
 ## Setup and Running Instructions
+### Command-line Script
 1. Clone the repository to your local machine in an appropriate folder.<br>
     ```bash
 
@@ -89,6 +90,47 @@ three steps are relevant for this project. When requesting scopes, select for th
     ```bash
 
     python src/main.py
+
+    ```
+
+### Docker Container
+1. If you do not have a Docker account, sign up for one at this [link](https://app.docker.com/signup)
+2. Follow the instructions at this [link](https://docs.docker.com/get-started/get-docker/) to download Docker desktop or the CLI client.
+3. Clone the repository to your local machine in an appropriate folder.<br>
+    ```bash
+
+    git clone https://github.com/cmmasaba/SlackScraper.git
+
+    ```
+4. Navigate to the root folder.
+    ```bash
+
+    cd SlackScraper/
+
+    ```
+5. Build the Docker image. More instructions can be found at this [link](https://docs.docker.com/get-started/docker-concepts/building-images/build-tag-and-publish-an-image/).
+    ```bash
+
+    docker build -t your-username/scraper .
+
+    ```
+6. Find the ID of the Docker image you built.
+    ```
+    
+    docker image ls
+
+    ```
+    Copy the ID of the image tagged `scraper` or whichever name you used as the tag in step 5<br>above.
+7. Start the Docker container.
+    ```
+
+    docker run image-id
+
+    ```
+    or you can run it in background mode
+    ```
+
+    docker run -d image-id
 
     ```
 
