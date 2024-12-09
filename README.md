@@ -61,10 +61,14 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
    Follow the instructions at this [link](https://cloud.google.com/iam/docs/service-accounts-create#iam-service-accounts-create-console) to create a service account and assign the following roles to the SA:<br>
    ```
 
-   - BigQuery Job User
    - Storage Object Creator
    - Storage Object User
    - Storage Object Viewer
+   - BigQuery Admin
+   - BigQuery Data Editor
+   - BigQuery Data Owner
+   - BigQuery Data Viewer
+   - BigQuery Job User
 
     ```
 7. Follow the instructions at this [link](https://cloud.google.com/iam/docs/keys-create-delete) to download the service account key created above and save it in<br> the root folder. You will use it in step 9.
@@ -84,6 +88,9 @@ three steps are relevant for this project. When requesting scopes, select for th
 
     GOOGLE_APPLICATION_CREDENTIALS=path-to-your-service-account-key-file
     SLACK_BOT_TOKEN=xxxxxx
+    GCP_PROJECT=project-name-in-gcp
+    GCP_STORAGE_BUCKET=bucket-name-in-gcp
+    TABLE_ID=table-id-in-bigquery
 
     ```
 10. Start the automation.
@@ -94,34 +101,33 @@ three steps are relevant for this project. When requesting scopes, select for th
     ```
 
 ### Docker Container
-1. If you do not have a Docker account, sign up for one at this [link](https://app.docker.com/signup)
-2. Follow the instructions at this [link](https://docs.docker.com/get-started/get-docker/) to download Docker desktop or the CLI client.
-3. Clone the repository to your local machine in an appropriate folder.<br>
+1. Follow steps `1, 2, 6, 7, 8, 9` above
+2. Clone the repository to your local machine in an appropriate folder.<br>
     ```bash
 
     git clone https://github.com/cmmasaba/SlackScraper.git
 
     ```
-4. Navigate to the root folder.
+3. Navigate to the root folder.
     ```bash
 
     cd SlackScraper/
 
     ```
-5. Build the Docker image. More instructions can be found at this [link](https://docs.docker.com/get-started/docker-concepts/building-images/build-tag-and-publish-an-image/).
+4. Build the Docker image. More instructions can be found at this [link](https://docs.docker.com/get-started/docker-concepts/building-images/build-tag-and-publish-an-image/).
     ```bash
 
     docker build -t your-username/scraper .
 
     ```
-6. Find the ID of the Docker image you built.
+5. Find the ID of the Docker image you built.
     ```
-    
+
     docker image ls
 
     ```
     Copy the ID of the image tagged `scraper` or whichever name you used as the tag in step 5<br>above.
-7. Start the Docker container.
+6. Start the Docker container.
     ```
 
     docker run image-id
