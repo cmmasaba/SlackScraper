@@ -10,3 +10,5 @@ __pycache__
 # Ignore the output directory
 SlackDownloads/
 
+# Ignore 
+sa-key-file.json
