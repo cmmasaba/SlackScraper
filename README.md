@@ -105,7 +105,7 @@ three steps are relevant for this project. When requesting scopes, select for th
 2. Sign up for a Docker account at this [link](https://app.docker.com/signup) if you don't have an account. Download Docker Desktop<br>
  at this [link](https://docs.docker.com/get-started/get-docker/).
 4. Build the Docker image. More instructions can be found at this [link](https://docs.docker.com/get-started/docker-concepts/building-images/build-tag-and-publish-an-image/).
-    ```bash
+    ```
 
     docker build -t your-username/scraper .
 
