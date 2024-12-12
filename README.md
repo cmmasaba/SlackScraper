@@ -1,9 +1,12 @@
 # Slack Scraper
 ## 1.0 Overview
-In this project I implement an `ELT (Extract Load Transform)` automation that accesses a<br>
-given Slack workspace using the Slack Web API and does the following:
-- Downloads all messages and threads in private and public channels.
-- Downloads files and attachments related to each message or thread.
+This `ELT (Extract Load Transform)` automation that accesses a
+given Slack workspace<br> using the Slack Web API and does the following:
+
+- Downloads all messages and threads in private channels in a workspace.
+- Downloads the files and attachments related to each message or thread.
+- Stores the messages and files in Google Cloud Storage
+- Loads the messages in BigQuery
 
 ### 1.1 Extract, Load, Transform
 The automation extracts data from Slack using the Web API, it then loads the data to Google<br>
@@ -91,7 +94,8 @@ three steps are relevant for this project. When requesting scopes, select for th
     SLACK_BOT_TOKEN=slack-bot-token
     GCP_PROJECT=project-name-in-gcp
     GCP_STORAGE_BUCKET=bucket-name-in-gcp
-    TABLE_ID=table-id-in-bigquery
+    DATASET_ID=dataset-id-in-bigquery
+    GCP_SERVICE=logger-name
 
     ```
 10. Start the automation.
