@@ -1,15 +1,17 @@
-import os                                               # Accessing env variables
-from slack_bolt import App                              # Initializing the Slack client
-from slack_sdk.errors import SlackApiError              # Error handling for errors from SLACK API
-import json                                             # Reading and writing to JSON/JSONL files
-from datetime import datetime, timedelta                # Calculating the date to append to file names
-from time import sleep                                  # Suspending the bot when necessary
-from pathlib import Path                                # Accessing files in storage
-from google.cloud import storage, bigquery              # Interacting with Google Cloud Storage
-from http. client import IncompleteRead                 # Error handling for unstable network conditions
-from dotenv import load_dotenv                          # Handling environment variables
-import requests                                         # Used for downloading files
-import mimetypes                                        # Define the mime types of the expected files
+import os                                                   # Accessing env variables
+from slack_bolt import App                                  # Initializing the Slack client
+from slack_sdk.errors import SlackApiError                  # Error handling for errors from SLACK API
+import json                                                 # Reading and writing to JSON/JSONL files
+from datetime import datetime, timedelta, timezone, date    # Calculating the date to append to file names
+from time import sleep                                      # Suspending the bot when necessary
+from pathlib import Path                                    # Accessing files in storage
+from google.cloud import storage, bigquery                  # Interacting with Google Cloud Storage
+from http. client import IncompleteRead                     # Error handling for unstable network conditions
+from dotenv import load_dotenv                              # Handling environment variables
+import requests                                             # Used for downloading files
+import mimetypes                                            # Define the mime types of the expected files
+from util.logging import GclClient
+import time
 
 class SlackScraper:
     def __init__(self, save_to_cloud = True) -> None:
@@ -21,9 +23,9 @@ class SlackScraper:
         self.slack_bot_token = os.environ['SLACK_BOT_TOKEN']
         self.app = App(token=self.slack_bot_token)
         self.client = self.app.client
-        self.downloads_folder = Path('SlackDownloads')
+        self.downloads_folder = Path('downloads')
         self.downloads_folder.mkdir(exist_ok=True)
-        self.checkpoint_file = Path('SlackDownloads/checkpoints.json')
+        self.checkpoint_file = Path('downloads/checkpoints.json')
         self.checkpoint_file.touch(exist_ok=True)
         self.read_channels = {}
         self.storage_client = storage.Client(project=os.environ['GCP_PROJECT'])
@@ -31,7 +33,8 @@ class SlackScraper:
         self.storage_bucket = self.storage_client.bucket(os.environ['GCP_STORAGE_BUCKET'])
         self.last_checkpoint = 0
         self.save_to_cloud = save_to_cloud
-    
+        self.logger = GclClient().get_logger()
+
     def _read_checkpoints(self) -> dict:
         """
         Read the checkpoint to determine where to resume.
@@ -47,7 +50,7 @@ class SlackScraper:
             return {}
         except json.decoder.JSONDecodeError:
             return {}
-    
+
     def _write_checkpoint(self,channel_name: str, message_number: int) -> None:
         """
         Write each channel name on a new line to the checkpoint file.
@@ -61,7 +64,7 @@ class SlackScraper:
         checkpoints[channel_name] = message_number
         with self.checkpoint_file.open('w') as fp:
             json.dump(checkpoints, fp, indent=4)
-    
+
     def get_slack_workspace_members(self) -> None:
         """
         Retrieve the users in the Slack workspace and store the info in JSONL format.
@@ -72,18 +75,18 @@ class SlackScraper:
                 response = self.client.users_list()
                 is_call_successful = True
             except SlackApiError as e:
-                print(f"Error: {e}")
+                self.logger.error(f"[get_slack_workspace_members] Error: {e}")
                 sleep(15)
             except IncompleteRead:
-                print("Unable to fetch Slack members, unstable network", end='\n')
+                self.logger.error("[get_slack_workspace_members] Unable to fetch Slack members, unstable network")
 
-        Path(f'SlackDownloads/Users/').mkdir(parents=True, exist_ok=True)
-        with open(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'w') as fp:
+        Path(f'downloads/Users/').mkdir(parents=True, exist_ok=True)
+        with open(f"downloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'w') as fp:
             for user in response['members']:
                 json.dump(user, fp)
                 fp.write('\n')
         self._gcs_add_directory('users')
-        self._gcs_add_file(f"SlackDownloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
+        self._gcs_add_file(f"downloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
 
     def _directory_exists(self, directory_name) -> bool:
         """
@@ -96,9 +99,8 @@ class SlackScraper:
             True if the directory name is in the bucket, otherwise False
         """
         directory_path = directory_name.rstrip('/') + '/'               # dir names must end with a /
-
         blobs = list(self.storage_bucket.list_blobs(prefix=directory_path, max_results=1))
-        
+
         return len(blobs) > 0
 
     def _gcs_add_directory(self, directory_name: str) -> bool:
@@ -107,37 +109,40 @@ class SlackScraper:
     
         Args:
             directory_name: the name of the directory to add.
+
         Returns:
             True to signal success.
         """
         if not self._directory_exists(directory_name):
             if directory_name[-1] != '/':
-                directory_name = directory_name + '/'                   # dir names must end with a /
+                directory_name = directory_name + '/'
 
             blob = self.storage_bucket.blob(directory_name)
             blob.upload_from_string("", content_type="application/x-www-form-urlencoded:charset=UTF-8")
         return True
-    
+
     def _gcs_add_file(self, file_path, directory_name) -> str:
         """
         Add a file to the cloud storage bucket.
     
         Args:
             file_path: the path to the file.
-            directory_name: the name of the GCS directory to upload the file to..
+            directory_name: the name of the GCS directory to upload the file to.
+
         Returns:
             a link to the file in Google Cloud Storage.
         """
         if directory_name[-1] != '/':
-            directory_name = directory_name + '/'                       # dir names must end with a /
-        
+            directory_name = directory_name + '/'
+
         blob = self.storage_bucket.blob(directory_name + os.path.basename(file_path))
         blob.upload_from_filename(file_path)
         return blob.self_link
-    
+
     def get_private_slack_channels_ids(self) -> dict:
         """
         Get the private channel IDs and names from the Slack workspace and store the infor in JSON format.
+
         Returns:
             a dictionary of channel id and channel name the private channels in the workspace.
         """
@@ -148,20 +153,21 @@ class SlackScraper:
                 for result in self.client.conversations_list(types="private_channel"):
                     for channel in result["channels"]:
                         channels[channel["id"]] = channel['name']
-                Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
-                with open('SlackDownloads/Channels/private_channels.json', 'w') as fp:
+                Path(f'downloads/channels/').mkdir(parents=True, exist_ok=True)
+                with open('downloads/channels/private_channels.json', 'w') as fp:
                     json.dump(channels, fp, indent=4)
                 is_call_successful = False
                 return channels
             except SlackApiError as e:
-                print(f"Error: {e}")
+                self.logger.error(f"[get_private_slack_channels_ids][SlackApiError] Error: {e}")
                 sleep(15)
             except IncompleteRead:
-                print("Unable to fetch Slack channels IDs, unstable network", end='\n')
-    
+                self.logger.warning("[get_private_slack_channels_ids][IncompleteRead] Unable to fetch Slack channels IDs, unstable network")
+
     def get_public_slack_channels_ids(self) -> dict:
         """
         Get the public channel IDs and names from the Slack workspace and store the infor in JSON format.
+
         Returns:
             a dictionary of channel id and channel name the public channels in the workspace.
         """
@@ -172,17 +178,30 @@ class SlackScraper:
                 for result in self.client.conversations_list(types="public_channel"):
                     for channel in result["channels"]:
                         channels[channel["id"]] = channel['name']
-                Path(f'SlackDownloads/Channels/').mkdir(parents=True, exist_ok=True)
-                with open('SlackDownloads/Channels/public_channels.json', 'w') as fp:
+                Path(f'downloads/channels/').mkdir(parents=True, exist_ok=True)
+                with open('downloads/channels/public_channels.json', 'w') as fp:
                     json.dump(channels, fp, indent=4)
                 is_call_successful = True
                 return channels
             except SlackApiError as e:
-                print(f"Error: {e}")
+                self.logger.error(f"[get_public_slack_channels_ids][SlackApiError] Error: {e}")
                 sleep(15)
             except IncompleteRead:
-                print("Unable to fetch Slack channels IDs, unstable network", end='\n')
-    
+                self.logger.warning("[get_public_slack_channels_ids][IncompleteRead] Unable to fetch Slack channels IDs, unstable network")
+
+
+    '''
+    The date returned must be of yesterday. The goal is to load on any execution the information known for yesterday.
+    '''
+    def get_execution_tm(self):
+        yesterday = datetime.today() - timedelta(days=1)
+        return yesterday.strftime('%Y%m%d')
+
+    def get_slack_timestamp(self, year, month, day):
+        dt = datetime(year, month, day, 0, 0, 0, tzinfo=timezone.utc)
+        timestamp = time.mktime(dt.timetuple())
+        return timestamp
+
     def get_slack_messages(self) -> bool:
         '''
         Download slack messages, threads and their related files.
@@ -191,33 +210,38 @@ class SlackScraper:
         '''
         try:
             threaded_replies = []
-            current_date = datetime.today().strftime('%Y%m%d')
+            current_date = self.get_execution_tm()
+            end_date = date.today()
+            start_date = end_date - timedelta(days=1)
 
-            with open('SlackDownloads/Channels/private_channels.json', 'r') as fp:
+            with open('downloads/channels/private_channels.json', 'r') as fp:
                 channels = json.load(fp)
 
-            Path(f'SlackDownloads/Messages/').mkdir(parents=True, exist_ok=True)
-            Path(f'SlackDownloads/Messages/slack_{current_date}.jsonl').touch(exist_ok=True)
+            Path(f'downloads/messages/').mkdir(parents=True, exist_ok=True)
+            Path(f'downloads/messages/slack_{current_date}.jsonl').touch(exist_ok=True)
 
-            with open(f'SlackDownloads/Messages/slack_{current_date}.jsonl', 'a') as messages_fp:
-                timestamp_since_last_backup = datetime.timestamp(datetime.now() - timedelta(days=1))
+            with open(f'downloads/messages/slack_{current_date}.jsonl', 'a') as messages_fp:
+                #
+                oldest_timestamp_tm = self.get_slack_timestamp(start_date.year, start_date.month, start_date.day)
+                latest_timestamp_tm = self.get_slack_timestamp(end_date.year, end_date.month, end_date.day)
                 for channel_id, channel_name in channels.items():
                     messages = []
                     self.last_checkpoint = 0
-                    print(channel_name)
-                    print()
+                    self.logger.info(f'[get_slack_messages] {channel_name}')
 
                     if channel_name in self.read_channels:
                         self.last_checkpoint = self.read_channels[channel_name]
 
                     conversation_history = self.client.conversations_history(
-                                                channel=channel_id,
-                                                oldest=timestamp_since_last_backup,
-                                                limit=999,
-                                            )
+                        channel=channel_id,
+                        oldest=oldest_timestamp_tm,
+                        latest=latest_timestamp_tm,
+                        limit=999,
+                        inclusive=True
+                    )
                     if conversation_history['ok']:
                         messages = conversation_history['messages']
-                    print(f'Number of messages in {channel_name}: {len(messages)}', end='\n')
+                    self.logger.info(f'[get_slack_messages] Number of messages in {channel_name}: {len(messages)}')
 
                     if len(messages) > 0:
                         for message_number, message in enumerate(messages):
@@ -226,7 +250,6 @@ class SlackScraper:
                                 break
                             if message_number < self.last_checkpoint:
                                 continue
-                            print('Message: ', len(messages) - message_number, end='\n')
                             message['channel_name'] = channel_name
                             message['channel_id'] = channel_id
 
@@ -262,25 +285,25 @@ class SlackScraper:
                                                 attachment['title_link'] = None
                                             if not attachment.get('image_url'):
                                                 attachment['image_url'] = None
-                                            if not attachment.get('image_width'):                       
+                                            if not attachment.get('image_width'):
                                                 attachment['image_width'] = None
-                                            if not attachment.get('image_height'):                       
+                                            if not attachment.get('image_height'):
                                                 attachment['image_height'] = None
-                                            if not attachment.get('image_bytes'):                     
+                                            if not attachment.get('image_bytes'):
                                                 attachment['image_bytes'] = None
-                                            if not attachment.get('from_url'):                       
+                                            if not attachment.get('from_url'):
                                                 attachment['from_url'] = None
-                                            if not attachment.get('service_icon'):                       
+                                            if not attachment.get('service_icon'):
                                                 attachment['service_icon'] = None
-                                            if not attachment.get('original_url'):                       
+                                            if not attachment.get('original_url'):
                                                 attachment['original_url'] = None
-                                            if not attachment.get('fallback'):                       
+                                            if not attachment.get('fallback'):
                                                 attachment['fallback'] = None
-                                            if not attachment.get('is_share'):                       
+                                            if not attachment.get('is_share'):
                                                 attachment['is_share'] = None
-                                            if not attachment.get('is_reply_unfurl'):                       
+                                            if not attachment.get('is_reply_unfurl'):
                                                 attachment['is_reply_unfurl'] = None
-                                            if not attachment.get('service_name'):                       
+                                            if not attachment.get('service_name'):
                                                 attachment['service_name'] = None
                                             if attachment.get('message_blocks'):
                                                 attachment['message_blocks'] = [str(attachment['message_blocks'])]
@@ -326,9 +349,9 @@ class SlackScraper:
                                                 attachment['channel_team'] = None
                                             if not attachment.get('channel_id'):
                                                 attachment['channel_id'] = None
-                                            if not attachment.get('footer_icon'):                       
+                                            if not attachment.get('footer_icon'):
                                                 attachment['footer_icon'] = None
-                                            if not attachment.get('footer'):                       
+                                            if not attachment.get('footer'):
                                                 attachment['footer'] = None
                                             if attachment.get('pinned_to'):
                                                 del thread['pinned_to']
@@ -341,14 +364,15 @@ class SlackScraper:
                                         for file in thread.get('files'):
                                             if file.get('url_private_download'):
                                                 file_path = self._download_and_verify_slack_file(
-                                                                file.get('url_private_download'),
-                                                                f'SlackDownloads/Files/{current_date}/{channel_name}'
-                                                            )
+                                                    file.get('url_private_download'),
+                                                    f'downloads/files/{current_date}/{channel_name}'
+                                                )
                                                 if file_path:
                                                     try:
                                                         file_storage_path = None
                                                         file_storage_path = self._gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
                                                         if file_storage_path:
+                                                            self.logger.info(f'File successfully backed to Cloud Storage')
                                                             file_paths.append({
                                                                 'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
                                                                 'filename': file.get('name'),
@@ -395,25 +419,25 @@ class SlackScraper:
                                             attachment['title_link'] = None
                                         if not attachment.get('image_url'):
                                             attachment['image_url'] = None
-                                        if not attachment.get('image_width'):                       
+                                        if not attachment.get('image_width'):
                                             attachment['image_width'] = None
-                                        if not attachment.get('image_height'):                       
+                                        if not attachment.get('image_height'):
                                             attachment['image_height'] = None
-                                        if not attachment.get('image_bytes'):                       
+                                        if not attachment.get('image_bytes'):
                                             attachment['image_bytes'] = None
-                                        if not attachment.get('from_url'):                       
+                                        if not attachment.get('from_url'):
                                             attachment['from_url'] = None
-                                        if not attachment.get('service_icon'):                       
+                                        if not attachment.get('service_icon'):
                                             attachment['service_icon'] = None
-                                        if not attachment.get('original_url'):                       
+                                        if not attachment.get('original_url'):
                                             attachment['original_url'] = None
-                                        if not attachment.get('fallback'):                       
+                                        if not attachment.get('fallback'):
                                             attachment['fallback'] = None
-                                        if not attachment.get('is_share'):                       
+                                        if not attachment.get('is_share'):
                                             attachment['is_share'] = None
-                                        if not attachment.get('is_reply_unfurl'):                       
+                                        if not attachment.get('is_reply_unfurl'):
                                             attachment['is_reply_unfurl'] = None
-                                        if not attachment.get('service_name'):                       
+                                        if not attachment.get('service_name'):
                                             attachment['service_name'] = None
                                         if attachment.get('message_blocks'):
                                             attachment['message_blocks'] = [str(attachment['message_blocks'])]
@@ -455,9 +479,9 @@ class SlackScraper:
                                             attachment['channel_team'] = None
                                         if not attachment.get('channel_id'):
                                             attachment['channel_id'] = None
-                                        if not attachment.get('footer_icon'):                       
+                                        if not attachment.get('footer_icon'):
                                             attachment['footer_icon'] = None
-                                        if not attachment.get('footer'):                       
+                                        if not attachment.get('footer'):
                                             attachment['footer'] = None
                                         if attachment.get('pinned_to'):
                                             del thread['pinned_to']
@@ -470,14 +494,15 @@ class SlackScraper:
                                     for file in message.get('files'):
                                         if file.get('url_private_download'):
                                             file_path = self._download_and_verify_slack_file(
-                                                            file.get('url_private_download'),
-                                                            f'SlackDownloads/Files/{current_date}/{channel_name}'
-                                                        )
+                                                file.get('url_private_download'),
+                                                f'downloads/files/{current_date}/{channel_name}'
+                                            )
                                             if file_path:
                                                 try:
                                                     file_storage_path = None
                                                     file_storage_path = self._gcs_add_file(file_path, f'files/{current_date}/{channel_name}')
                                                     if file_storage_path:
+                                                        self.logger.info(f'File successfully backed to Cloud Storage')
                                                         file_paths.append({
                                                             'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
                                                             'filename': file.get('name'),
@@ -498,13 +523,17 @@ class SlackScraper:
                         message_number = 0                                                                                                          # In case it fails at the start of the next channel, message number should be zero
                         sleep(5)
                 self._gcs_add_directory(f'messages/')
-                self._gcs_add_file(f'SlackDownloads/Messages/slack_{current_date}.jsonl', f'messages/')
-                sleep(30)
-                if not self._load_to_bigquery(f'SlackDownloads/Messages/slack_{current_date}.jsonl'):
-                    print('Failed to load the data to BigQuery.')
+                self._gcs_add_file(f'downloads/messages/slack_{current_date}.jsonl', f'messages/')
+                self.logger.info(f'Messages file successfully backed to Cloud Storage')
+                sleep(15)
+                self._clean_jsonl_file(f'downloads/messages/slack_{current_date}.jsonl')
+                if not self._load_to_bigquery(f'downloads/messages/slack_{current_date}.jsonl'):
+                    self.logger.error('[get_slack_messages][load] Failed to load the data to BigQuery.')
+                else:
+                    self.logger.info(f'Data successfully loaded to BigQuery')
             return True
         except SlackApiError as e:
-            print(f"Error: {e}")
+            self.logger.error(f"[get_slack_messages][SlackApiError] Error: {e}")
             try:
                 if message_number < self.last_checkpoint:
                     message_number = self.last_checkpoint
@@ -514,7 +543,7 @@ class SlackScraper:
             finally:
                 return False
         except IncompleteRead:
-            print("Unable to fetch channel messages, unstable network", end='\n')
+            self.logger.error("[get_slack_messages][IncompleteRead]Unable to fetch channel messages, unstable network", end='\n')
             try:
                 if message_number < self.last_checkpoint:
                     message_number = self.last_checkpoint
@@ -523,8 +552,26 @@ class SlackScraper:
                 pass
             finally:
                 return False
-    
-    def _download_and_verify_slack_file(self, file_url, storage_location='SlackDownloads') -> str:
+
+    def _clean_jsonl_file(self, file_path):
+        errors_found = 0
+        output_file = 'downloads/messages/cleaned_jsonl.jsonl'
+
+        with open(file_path, 'r') as infile, open(output_file, 'w') as outfile:
+            for line_number, line in enumerate(infile, 1):
+                try:
+                    json.loads(line)
+                    outfile.write(line)
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"[clean_jsonl_file][JSONDecodeError] Error on line {line_number}: {e}")
+                    self.logger.info(f"[clean_jsonl_file] Removing line {line_number}")
+                    errors_found += 1
+
+        os.replace(output_file,file_path)
+
+        self.logger.info(f"[clean_jsonl_file] Cleaning complete. {errors_found} lines were removed.")
+
+    def _download_and_verify_slack_file(self, file_url, storage_location='downloads') -> str:
         """
         Download files attached to messages and threads.
 
@@ -537,16 +584,15 @@ class SlackScraper:
         # Download the file
         file_path = self._download_slack_file(file_url, storage_location)
 
-        
         if file_path:
             # Verify the downloaded file
             if self._verify_file_content(file_path):
-                print("✓ File downloaded and verified successfully\n")
+                self.logger.info("[download_and_verify_slack_file] ✓ File downloaded and verified successfully")
             else:
-                print("⚠ File may be corrupted or in unexpected format\n")
+                self.logger.warning("[download_and_verify_slack_file] ⚠ File may be corrupted or in unexpected format")
             return file_path
         else:
-            print("✗ File download failed\n")
+            self.logger.error("[download_and_verify_slack_file] ✗ File download failed\n")
             return None
 
     def _verify_file_content(self, file_path) -> bool:
@@ -561,7 +607,7 @@ class SlackScraper:
             with open(file_path, 'rb') as f:
                 # Read first few bytes to check file signature
                 header = f.read(8)
-                
+
             # Check common file signatures
             file_signatures = {
                 b'%PDF': 'PDF file',
@@ -571,21 +617,21 @@ class SlackScraper:
                 b'GIF87a': 'GIF image',
                 b'GIF89a': 'GIF image',
             }
-            
+
             for signature, _ in file_signatures.items():
                 if header.startswith(signature):
                     return True
-                    
+
             # If no signature match but file has content
             if len(header) > 0:
                 return True
-                
+
             return False
-            
+
         except IOError as e:
             return False
-    
-    def _download_slack_file(self, file_url, save_dir='SlackDownloads') -> str:
+
+    def _download_slack_file(self, file_url, save_dir='downloads') -> str:
         """
         Download a file from Slack API and save it to local storage.
         Args:
@@ -600,39 +646,33 @@ class SlackScraper:
                 "Authorization": f"Bearer {self.slack_bot_token}",
                 "User-Agent": "SlackDownloader/1.0"
             }
-            
-            # Make the initial request
+
             response = requests.get(file_url, headers=headers, stream=True)
             response.raise_for_status()
-            
-            # Get content type and filename from headers
+
             content_type = response.headers.get('content-type', '').split(';')[0]
             content_disp = response.headers.get('content-disposition', '')
-            
-            # Try to get filename from content disposition
+
             if 'filename=' in content_disp:
                 filename = content_disp.split('filename=')[-1].strip('"')
                 filename = filename.split('";')[0]
             else:
-                # Generate filename based on content type
                 ext = mimetypes.guess_extension(content_type) or ''
                 filename = f"slack_file{ext}"
-            
-            # Create save directory if it doesn't exist
+
             Path(save_dir).mkdir(parents=True, exist_ok=True)
             save_path = self._get_next_filename(os.path.join(save_dir, filename))
-            
-            # Save the file in binary mode
+
             with open(save_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
 
             return save_path
-            
+
         except requests.exceptions.RequestException as e:
             return None
-    
+
     def _get_next_filename(self, file_path) -> str:
         """
         Add incremental number to a file name it the name already exists.
@@ -644,14 +684,14 @@ class SlackScraper:
         """
         if not os.path.exists(file_path):
             return file_path
-        
+
         name, ext = os.path.splitext(file_path)
         counter = 1
-        
+
         while os.path.exists(file_path):
             file_path = f"{name}({counter}){ext}"
             counter += 1
-            
+
         return file_path
 
     def _load_to_bigquery(self, file_path: str) -> bool:
@@ -664,11 +704,13 @@ class SlackScraper:
         Returns:
             True if successful, otherwise False.
         '''
-        table_id = os.environ['TABLE_ID']
+        current_date = self.get_execution_tm()
+        table_id = os.environ['DATASET_ID'] + f'.slack_{current_date}'
         job_config = bigquery.LoadJobConfig(
             autodetect=True,
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED
         )
 
         with open(file_path, 'rb') as fp:
@@ -679,13 +721,13 @@ class SlackScraper:
                     job_config=job_config
                 )
             except (ValueError, TypeError) as e:
-                print(f'Error while loading to BigQuery: {e}', end='\n')
+                self.logger.error(f'[_load_to_bigquery] Error while loading to BigQuery: {e}')
                 return False
-            
+
             try:
                 load_job.result()
             except Exception as e:
-                print(f'Load job failed/did not complete: {e}', end='\n')
+                self.logger.error(f'[_load_to_bigquery] Load job failed/did not complete: {e}')
                 return False
         return True
 
@@ -699,15 +741,15 @@ class SlackScraper:
             response = self.get_slack_messages()
 
             while not response:
-                print("Restarting download")
+                self.logger.info("[start] Restarting download")
                 self.read_channels = self._read_checkpoints()
                 sleep(15)
                 response = self.get_slack_messages()
         except KeyboardInterrupt:
-            print(f'\nStopping the app.\n')
+            self.logger.warning(f'[start][KeyboardInterrupt] Stopping the app.')
         finally:
             self._stop()
-    
+
     def _stop(self,):
         """
         Stop the bot and perform clean up operations.
@@ -720,4 +762,4 @@ class SlackScraper:
             if self.save_to_cloud:
                 shutil.rmtree(self.downloads_folder)
         except Exception as e:
-            print(f'Error: {e}', end='\n')
+            self.logger.error(f'[stop] Error: {e}')
