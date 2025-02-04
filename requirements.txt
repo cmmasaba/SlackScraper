@@ -4,3 +4,4 @@ google-cloud-storage==2.10.0
 google-cloud-bigquery==3.27.0
 google-cloud-logging>=3.0.0,<4.0.0
 python-dotenv==1.0.1
+jsonschema==4.23.0
