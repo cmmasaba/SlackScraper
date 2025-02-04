@@ -986,6 +986,45 @@ class SlackScraper:
         }
         return thread_structure
 
+    def sample_message_structure(self):
+        message_structure = {
+            "parent_user_id": None,
+            "bot_id": None,
+            "reactions": None,
+            "x_files": None,
+            "bot_profile": None,
+            "subscribed": None,
+            "is_locked": None,
+            "reply_users": None,
+            "latest_reply": None,
+            "channel_name": None,
+            "reply_users_count": None,
+            "edited": None,
+            "attachments": None,
+            "client_msg_id": None,
+            "name": None,
+            "blocks": None,
+            "hidden": None,
+            "inviter": None,
+            "team": None,
+            "purpose": None,
+            "reply_count": None,
+            "old_name": None,
+            "channel_id": None,
+            "thread_ts": None,
+            "upload": None,
+            "user": None,
+            "threads": None,
+            "text": None,
+            "ts": None,
+            "root": None,
+            "type": None,
+            "files": None,
+            "display_as_bot": None,
+            "subtype": None
+        }
+        return message_structure
+
     def _clean_jsonl_file(self, file_path):
         errors_found = 0
         output_file = 'downloads/messages/cleaned_jsonl.jsonl'
