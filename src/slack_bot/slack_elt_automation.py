@@ -887,7 +887,7 @@ class SlackScraper:
             self.write_to_jsonl_file(messages, f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl')
 
     def threads_sync(self):
-        tables = get_dataset_slack_tables()
+        tables = self.get_dataset_slack_tables()
         current_date = self.get_execution_tm()
         Path(f'downloads/messages/').mkdir(parents=True, exist_ok=True)
 
@@ -934,6 +934,21 @@ class SlackScraper:
                 self.logger.info(f'Error loading data to BigQuery')
             else:
                 self.logger.info(f'Successfully loaded data to BigQuery')
+
+    def get_dataset_slack_tables(self):
+        query = f"""
+            SELECT
+                table_name
+            FROM
+                {os.environ['DATASET_ID']}.INFORMATION_SCHEMA.TABLES
+            WHERE
+                table_name LIKE 'slack_202%'
+            ORDER BY
+                table_name;
+        """
+        results = self.bigquery_client.query_and_wait(query)
+        tables = [table[0] for table in results]
+        return tables
 
     def _clean_jsonl_file(self, file_path):
         errors_found = 0
