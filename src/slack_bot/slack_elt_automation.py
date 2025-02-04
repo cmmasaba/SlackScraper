@@ -662,7 +662,7 @@ class SlackScraper:
         self.logger(f"Valid records written: {valid_records}")
         self.logger(f"Invalid records skipped: {invalid_records}")
 
-    def download_thread(self, initial_date, results, table):
+    def download_thread(self, initial_date, results):
         current_date = self.get_execution_tm()
         messages = []
         
@@ -910,26 +910,31 @@ class SlackScraper:
                             ORDER BY thread.ts DESC
                         ) [OFFSET(0)] as `latest_thread_timestamp`,
                         ARRAY_AGG(t.channel_id LIMIT 1) as `channel_id`,
-                        ARRAY_AGG(t.channel_name LIMIT 1) as `channel_name`,
-                        ARRAY_AGG(thread) as threads
+                        ARRAY_AGG(t.channel_name LIMIT 1) as `channel_name`
                     FROM
                         `{os.environ['DATASET_ID']}.{table}` as t,
                         UNNEST(threads) as thread
                     WHERE
-                        t.channel_id = '{channel_id}'
+                        t.channel_id = @channel_id
                         AND
-                        (thread.ts >= {oldest_timestamp_tm} OR t.ts >= {oldest_timestamp_tm})
+                        (thread.ts >= @oldest_timestamp_tm OR t.ts >= @oldest_timestamp_tm)
                     GROUP BY
                         t.ts
                     ORDER BY
                         t.ts
                 """
-                results = self.bigquery_client.query_and_wait(messages_query)
-                self.download_thread(
-                    initial_date,
-                    results,
-                    table
+                results = self.bigquery_client.query_and_wait(
+                    messages_query,
+                    job_config=bigquery.QueryJobConfig(
+                        query_parameters = [
+                            bigquery.ScalarQueryParameter('channel_id', 'STRING', channel_id),
+                            bigquery.ScalarQueryParameter('channel_id', 'FLOAT64', oldest_timestamp_tm)
+                        ]
+                    )
                 )
+                self.download_thread(initial_date, results)
+
+            # Save the updated threads to Bigquery if there are newer threads
             if os.stat(f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl').st_size > 0:
                 if not self._load_to_bigquery(f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl', initial_date):
                     self.logger.info(f'Error loading data to BigQuery')
@@ -1211,6 +1216,7 @@ class SlackScraper:
             self.get_public_slack_channels_ids()
 
             self.read_channels = self._read_checkpoints()
+            self.threads_sync()
             response = self.get_slack_messages()
 
             while not response:
@@ -1218,6 +1224,7 @@ class SlackScraper:
                 self.read_channels = self._read_checkpoints()
                 sleep(15)
                 response = self.get_slack_messages()
+
         except KeyboardInterrupt:
             self.logger.warning(f'[start][KeyboardInterrupt] Stopping the app.')
         finally:
