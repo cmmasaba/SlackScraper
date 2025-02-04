@@ -13,6 +13,7 @@ import mimetypes                                            # Define the mime ty
 from util.logging import GclClient
 import time
 from typing import Dict, List, Any
+import jsonschema
 
 class SlackScraper:
     def __init__(self, save_to_cloud = True) -> None:
@@ -624,6 +625,315 @@ class SlackScraper:
         # Create a deep copy of the schema and modify it
         modified_schema = json.loads(json.dumps(schema))
         return modify_field(modified_schema)
+
+    def write_to_jsonl_file(self, data: List[Dict[Any, Any]], output_file: str):
+        with open('json_schema.json', 'r') as fp:
+            schema = json.load(fp)
+
+        nullable_schema = self.modify_schema_for_nulls(schema)
+        
+        # Create JSON schema validator
+        validator = jsonschema.Draft7Validator(nullable_schema)
+        
+        valid_records = 0
+        invalid_records = 0
+        
+        with open(output_file, 'a') as f:
+            for record in data:
+                # Clean the record
+                cleaned_record = self.clean_record(record)
+                
+                # Validate record against schema
+                errors = list(validator.iter_errors(cleaned_record))
+                if errors:
+                    self.logger(f"\nValidation errors found in record:")
+                    for error in errors:
+                        self.logger(f"- {error.message}")
+                        self.logger(f"  Path: {' -> '.join(str(p) for p in error.path)}")
+                        self.logger(f"  Value: {error.instance}")
+                    invalid_records += 1
+                    continue
+                    
+                # Write valid record to JSONL file
+                f.write(json.dumps(cleaned_record) + '\n')
+                valid_records += 1
+        
+        self.logger(f"\nProcessing complete:")
+        self.logger(f"Valid records written: {valid_records}")
+        self.logger(f"Invalid records skipped: {invalid_records}")
+
+    def download_thread(self, initial_date, results, table):
+        current_date = self.get_execution_tm()
+        messages = []
+        
+        for result in results:
+                channel_id = str(result['channel_id'][0])
+                channel_name = str(result['channel_name'][0])
+                chat_timestamp = str(result['top_level_timestamp'])
+                oldest_timestamp = str(result['latest_thread_timestamp'])
+
+
+                message = self.sample_message_structure()
+                message['channel_name'] = channel_name
+                message['channel_id'] = channel_id
+                message['ts'] = float(chat_timestamp)
+
+                threads_response = self.client.conversations_replies(channel=channel_id,
+                                                    ts=chat_timestamp,
+                                                    oldest=oldest_timestamp)
+
+                if threads_response['ok'] and len(threads_response['messages']) > 2:
+                    threaded_replies = threads_response['messages']
+                    del threaded_replies[0]
+                    threads = []
+
+                    for thread in threaded_replies:
+                        thread_schema = self.sample_thread_structure()
+                        if thread.get("blocks"):
+                            thread_schema['blocks'] = [str(thread['blocks'])]
+                        if thread.get('old_name'):
+                            thread_schema['old_name'] = thread['old_name']
+                        if thread.get('name'):
+                            thread_schema['name'] = thread['name']
+                        if thread.get('bot_id'):
+                            thread_schema['bot_id'] = thread['bot_id']
+                        if thread.get('parent_user_id'):
+                            thread_schema['parent_user_id'] = thread['parent_user_id']
+                        if thread.get('reactions'):
+                            thread_schema['reactions'] = thread['reactions']
+                        if thread.get('x_files'):
+                            thread_schema['x_files'] = thread['x_files']
+                        if thread.get('bot_profile'):
+                            thread_schema['bot_profile'] = thread['bot_profile']
+                        if thread.get('subscribed'):
+                            thread_schema['subscribed'] = thread['subscribed']
+                        if thread.get('reply_users_count'):
+                            thread_schema['reply_users_count'] = thread['reply_users_count']
+                        if thread.get('thread_ts'):
+                            thread_schema['thread_ts'] = thread['thread_ts']
+                        if thread.get('is_locked'):
+                            thread_schema['is_locked'] = thread['is_locked']
+                        if thread.get('edited'):
+                            thread_schema['edited'] = thread['edited']
+                        if thread.get('client_msg_id'):
+                            thread_schema['client_msg_id'] = thread['client_msg_id']
+                        if thread.get('latest_reply'):
+                            thread_schema['latest_reply'] = thread['latest_reply']
+                        if thread.get('hidden'):
+                            thread_schema['hidden'] = thread['hidden']
+                        if thread.get('inviter'):
+                            thread_schema['inviter'] = thread['inviter']
+                        if thread.get('team'):
+                            thread_schema['team'] = thread['team']
+                        if thread.get('reply_count'):
+                            thread_schema['reply_count'] = thread['reply_count']
+                        if thread.get('upload'):
+                            thread_schema['upload'] = thread['upload']
+                        if thread.get('user'):
+                            thread_schema['user'] = thread['user']
+                        if thread.get('text'):
+                            thread_schema['text'] = thread['text']
+                        if thread.get('ts'):
+                            thread_schema['ts'] = thread['ts']
+                        if thread.get('reply_users'):
+                            thread_schema['reply_users'] = thread['reply_users']
+                        if thread.get('type'):
+                            thread_schema['type'] = thread['type']
+                        if thread.get('display_as_bot'):
+                            thread_schema['display_as_bot'] = thread['display_as_bot']
+                        if thread.get('subtype'):
+                            thread_schema['subtype'] = thread['subtype']
+                        if thread.get('purpose'):
+                            thread_schema['purpose'] = thread['purpose']
+
+                        if thread.get('root') and thread['root'].get('attachments'):
+                            for attachment in thread['root']['attachments']:
+                                if attachment.get('bot_team_id'):
+                                    del attachment['bot_team_id']
+                                if attachment.get('blocks'):
+                                    attachment['blocks'] = [str(attachment['blocks'])]
+                                if not attachment.get('thumb_url'):
+                                    attachment['thumb_url'] = None
+                                if not attachment.get('thumb_width'):
+                                    attachment['thumb_width'] = None
+                                if not attachment.get('thumb_height'):
+                                    attachment['thumb_height'] = None
+                                if  not attachment.get('title'):
+                                    attachment['title'] = None
+                                if not attachment.get('title_link'):
+                                    attachment['title_link'] = None
+                                if not attachment.get('image_url'):
+                                    attachment['image_url'] = None
+                                if not attachment.get('image_width'):
+                                    attachment['image_width'] = None
+                                if not attachment.get('image_height'):
+                                    attachment['image_height'] = None
+                                if not attachment.get('image_bytes'):
+                                    attachment['image_bytes'] = None
+                                if not attachment.get('from_url'):
+                                    attachment['from_url'] = None
+                                if not attachment.get('service_icon'):
+                                    attachment['service_icon'] = None
+                                if not attachment.get('original_url'):
+                                    attachment['original_url'] = None
+                                if not attachment.get('fallback'):
+                                    attachment['fallback'] = None
+                                if not attachment.get('is_share'):
+                                    attachment['is_share'] = None
+                                if not attachment.get('is_reply_unfurl'):
+                                    attachment['is_reply_unfurl'] = None
+                                if not attachment.get('service_name'):
+                                    attachment['service_name'] = None
+                                if attachment.get('message_blocks'):
+                                    attachment['message_blocks'] = [str(attachment['message_blocks'])]
+                                if attachment.get('files'):
+                                    del attachment['files']
+
+                        if thread.get('root') and thread['root'].get('blocks'):
+                            thread['root']['blocks'] = [str(thread['root']['blocks'])]
+                        if thread.get('root') and thread['root'].get('files'):
+                            del thread['root']['files']
+                        if thread.get('root'):
+                            thread_schema['root'] = thread['root']
+
+                        if thread.get('attachments'):
+                            for attachment in thread['attachments']:
+                                if attachment.get('bot_team_id'):
+                                    del attachment['bot_team_id']
+                                if attachment.get('blocks'):
+                                    attachment['blocks'] = [str(attachment['blocks'])]
+                                if attachment.get('message_blocks'):
+                                    attachment['message_blocks'] = [str(attachment['message_blocks'])]
+                                if attachment.get('files'):
+                                    del attachment['files']
+                                if not attachment.get('private_channel_prompt'):
+                                    attachment['private_channel_prompt'] = False
+                                if not attachment.get('author_name'):
+                                    attachment['author_name'] = None
+                                if not attachment.get('author_link'):
+                                    attachment['author_link'] = None
+                                if not attachment.get('author_icon'):
+                                    attachment['author_icon'] = None
+                                if not attachment.get('author_subname'):
+                                    attachment['author_subname'] = None
+                                if attachment.get('mrkdwn_in'):
+                                    del attachment['mrkdwn_in']
+                                if not attachment.get('fallback'):
+                                    attachment['fallback'] = None
+                                if not attachment.get('original_url'):
+                                    attachment['original_url'] = None
+                                if not attachment.get('from_url'):
+                                    attachment['from_url'] = None
+                                if not attachment.get('is_msg_unfurl'):
+                                    attachment['is_msg_unfurl'] = None
+                                if not attachment.get('is_animated'):
+                                    attachment['is_animated'] = None
+                                if not attachment.get('author_id'):
+                                    attachment['author_id'] = None
+                                if not attachment.get('channel_team'):
+                                    attachment['channel_team'] = None
+                                if not attachment.get('channel_id'):
+                                    attachment['channel_id'] = None
+                                if not attachment.get('footer_icon'):
+                                    attachment['footer_icon'] = None
+                                if not attachment.get('footer'):
+                                    attachment['footer'] = None
+                                if attachment.get('pinned_to'):
+                                    del thread['pinned_to']
+                                if attachment.get('pinned_info'):
+                                    del thread['pinned_info']
+                            thread_schema['attachments'] = thread['attachments']
+                        
+                        file_paths = []
+                        if thread.get('files'):
+                            self._gcs_add_directory(f'files/{initial_date}/{channel_name}')
+                            for file in thread.get('files'):
+                                if file.get('preview_is_truncated'):
+                                    del file['preview_is_truncated']
+                                if file.get('url_private_download'):
+                                    file_path = self._download_and_verify_slack_file(
+                                        file.get('url_private_download'),
+                                        f'downloads/files/{initial_date}/{channel_name}'
+                                    )
+                                    if file_path:
+                                        try:
+                                            file_storage_path = None
+                                            file_storage_path = self._gcs_add_file(file_path, f'files/{initial_date}/{channel_name}')
+                                            if file_storage_path:
+                                                self.logger.info(f'File successfully backed to Cloud Storage')
+                                                file_paths.append({
+                                                    'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
+                                                    'filename': file.get('name'),
+                                                    'storage_url': file_storage_path
+                                                })
+                                            else:
+                                                file_paths.append({
+                                                    'timestamp': str(file.get('timestamp')) if file.get('timestamp') else '',
+                                                    'filename': file.get('name'),
+                                                })
+                                        except (TimeoutError, ConnectionError):
+                                            continue
+                        thread_schema['files'] = file_paths
+                        threads.append(thread_schema)
+
+                    message['threads'] = threads
+                    messages.append(message)
+                elif not threads_response['ok']:
+                    self.logger.info(f'Error fetching threads: {threads_response['error']}')
+                else:
+                    # No update in threads
+                    pass
+        if messages:
+            self.write_to_jsonl_file(messages, f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl')
+
+    def threads_sync(self):
+        tables = get_dataset_slack_tables()
+        current_date = self.get_execution_tm()
+        Path(f'downloads/messages/').mkdir(parents=True, exist_ok=True)
+
+        for table in tables:
+            initial_date = table.split('_')[1]
+            start_date = datetime.strptime(initial_date, '%Y%m%d').date() - timedelta(days=21)
+
+            oldest_timestamp_tm = self.get_slack_timestamp(start_date.year, start_date.month, start_date.day)
+
+            Path(f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl').touch(exist_ok=True)
+
+            channels = self.get_private_slack_channels_ids()
+
+            for channel_id, _ in channels.items():
+                messages_query = f"""
+                    SELECT
+                        t.ts as `top_level_timestamp`,
+                        ARRAY_AGG(
+                            thread.ts
+                            ORDER BY thread.ts DESC
+                        ) [OFFSET(0)] as `latest_thread_timestamp`,
+                        ARRAY_AGG(t.channel_id LIMIT 1) as `channel_id`,
+                        ARRAY_AGG(t.channel_name LIMIT 1) as `channel_name`,
+                        ARRAY_AGG(thread) as threads
+                    FROM
+                        `{os.environ['DATASET_ID']}.{table}` as t,
+                        UNNEST(threads) as thread
+                    WHERE
+                        t.channel_id = '{channel_id}'
+                        AND
+                        (thread.ts >= {oldest_timestamp_tm} OR t.ts >= {oldest_timestamp_tm})
+                    GROUP BY
+                        t.ts
+                    ORDER BY
+                        t.ts
+                """
+                results = self.bigquery_client.query_and_wait(messages_query)
+                self.download_thread(
+                    initial_date,
+                    results,
+                    table
+                )
+            if not self._load_to_bigquery(f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl', initial_date):
+                self.logger.info(f'Error loading data to BigQuery')
+            else:
+                self.logger.info(f'Successfully loaded data to BigQuery')
 
     def _clean_jsonl_file(self, file_path):
         errors_found = 0
