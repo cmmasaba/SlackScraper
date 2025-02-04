@@ -12,6 +12,7 @@ import requests                                             # Used for downloadi
 import mimetypes                                            # Define the mime types of the expected files
 from util.logging import GclClient
 import time
+from typing import Dict, List, Any
 
 class SlackScraper:
     def __init__(self, save_to_cloud = True) -> None:
@@ -552,6 +553,77 @@ class SlackScraper:
                 pass
             finally:
                 return False
+
+    def clean_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Clean a record by removing None values and empty containers that should be None.
+        
+        Args:
+            record: Dictionary containing the data to clean
+        Returns:
+            Cleaned dictionary with proper None handling
+        """
+        def clean_value(value: Any) -> Any:
+            if value is None:
+                return None
+            elif isinstance(value, dict):
+                cleaned = {k: clean_value(v) for k, v in value.items() if v is not None}
+                return cleaned if cleaned else None
+            elif isinstance(value, list):
+                cleaned = [clean_value(item) for item in value if item is not None]
+                return cleaned if cleaned else None
+            elif isinstance(value, str) and '.' in value:
+                # Try to convert string timestamps to float
+                try:
+                    return float(value)
+                except ValueError:
+                    return value
+            elif isinstance(value, str) and value.isdigit():
+                # Try to convert string integers
+                try:
+                    return int(value)
+                except ValueError:
+                    return value
+            return value
+
+        return {k: clean_value(v) for k, v in record.items() if v is not None}
+
+    def modify_schema_for_nulls(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Modify schema to properly handle null values for all fields including arrays.
+        
+        Args:
+            schema: Original JSON schema
+        Returns:
+            Modified schema that properly handles null values
+        """
+        def modify_field(field: Dict[str, Any]) -> Dict[str, Any]:
+            if "type" in field:
+                if isinstance(field["type"], str):
+                    field["type"] = [field["type"], "null"]
+                elif isinstance(field["type"], list) and "null" not in field["type"]:
+                    field["type"].append("null")
+            
+            if "properties" in field:
+                for prop in field["properties"].values():
+                    if isinstance(prop, dict):
+                        modify_field(prop)
+            
+            if "items" in field:
+                if isinstance(field["items"], dict):
+                    modify_field(field["items"])
+                
+                # For array fields, add oneOf to allow null values
+                field["oneOf"] = [
+                    {"type": "array"},
+                    {"type": "null"}
+                ]
+            
+            return field
+
+        # Create a deep copy of the schema and modify it
+        modified_schema = json.loads(json.dumps(schema))
+        return modify_field(modified_schema)
 
     def _clean_jsonl_file(self, file_path):
         errors_found = 0
