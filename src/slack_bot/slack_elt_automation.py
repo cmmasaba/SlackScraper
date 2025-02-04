@@ -930,10 +930,11 @@ class SlackScraper:
                     results,
                     table
                 )
-            if not self._load_to_bigquery(f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl', initial_date):
-                self.logger.info(f'Error loading data to BigQuery')
-            else:
-                self.logger.info(f'Successfully loaded data to BigQuery')
+            if os.stat(f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl').st_size > 0:
+                if not self._load_to_bigquery(f'downloads/messages/slack_{initial_date}-{current_date}_threads_update.jsonl', initial_date):
+                    self.logger.info(f'Error loading data to BigQuery')
+                else:
+                    self.logger.info(f'Successfully loaded data to BigQuery')
 
     def get_dataset_slack_tables(self):
         query = f"""
