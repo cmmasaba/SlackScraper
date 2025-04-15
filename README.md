@@ -12,21 +12,6 @@ given Slack workspace<br> using the Slack Web API and does the following:
 The automation extracts data from Slack using the Web API, it then loads the data to Google<br>
 Cloud Storage. This includes the files and a JSONL file containing the messages. From GCS<br>
 the data is loaded to Google BigQuery where it can be transformed and put to use.<br>
-In case you are wondering why I did ELT instead of ETL, allow me to quote my manager on this:<br>
-"ETL is a bad practice. ELT is a good practice..."<br><br>
-Slack Web API has a limit of 999 on the number of messages that can be downloaded with a single<br>
-API call to `conversations.history`. For channels with large conversations or for workspaces<br>
-that have been around for long that limit is not enough to extrac all messages.<br>
-With a few modifications to this implementation, this automation is capable of downloading all<br>
-messages in channels even if the number of messages is larger than 999. For example in the use<br>
-case at our office it was able to download all messages going back to 2019 till date. This was<br>
-about `285,934` messages and their related files in a span of `4 days`.<br><br>
-At that level of magnitude; scaling, runtime and robustness are important factors to put into<br>
-consideration. Runtime because the automation could end up taking unreasonably long to download<br>
-the content if inefficiently designed. Robustness because the automation needs to handle errors<br>
-gracefully, record progress, and resume from the last checkpoint when interrupted. Other <br>
-considerations include storage, network bandwidth, and compute resources, enter scaling.<br>
-The Dockerfile included computes a small file (~133MB) that can be deployed to the cloud.<br>
 
 ## 2.0 Setup and Running Instructions
 ### 2.1 Command-line Script
@@ -73,6 +58,7 @@ The Dockerfile included computes a small file (~133MB) that can be deployed to t
    - BigQuery Data Owner
    - BigQuery Data Viewer
    - BigQuery Job User
+   - Logs Writer
 
     ```
 7. Follow the instructions at this [link](https://cloud.google.com/iam/docs/keys-create-delete) to download the service account key created above and save it in<br> the root folder. You will use it in step 9.
