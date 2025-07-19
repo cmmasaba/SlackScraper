@@ -7,12 +7,11 @@ from time import sleep                                      # Suspending the bot
 from pathlib import Path                                    # Accessing files in storage
 from google.cloud import storage, bigquery                  # Interacting with Google Cloud Storage
 from http. client import IncompleteRead                     # Error handling for unstable network conditions
-from dotenv import load_dotenv                              # Handling environment variables
 import requests                                             # Used for downloading files
 import mimetypes                                            # Define the mime types of the expected files
 from util.logging import GclClient
 import time
-from typing import Dict, List, Any
+from typing import dict, list, Any
 import jsonschema
 
 class SlackScraper:
@@ -20,8 +19,6 @@ class SlackScraper:
         """
         Initialize the app.
         """
-        load_dotenv()
-
         self.slack_bot_token = os.environ['SLACK_BOT_TOKEN']
         self.app = App(token=self.slack_bot_token)
         self.client = self.app.client
