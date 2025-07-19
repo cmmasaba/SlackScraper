@@ -8,6 +8,6 @@ WORKDIR /scraper
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-COPY . .
+COPY ./src/* .
 
-CMD ["sh", "-c", "python src/main.py"]
+CMD ["sh", "-c", "python main.py"]

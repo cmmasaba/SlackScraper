@@ -1,0 +1,17 @@
+services:
+  server:
+    build:
+      context: ./
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8g
+        reservations:
+          cpus: "0.5"
+          memory: 1g
+    container_name: scrapper
+    env_file:
+      - .env
+    ports:
+      - 30150:8050
