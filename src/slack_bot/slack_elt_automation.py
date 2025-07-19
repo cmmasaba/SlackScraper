@@ -1,18 +1,21 @@
-import os                                                   # Accessing env variables
-from slack_bolt import App                                  # Initializing the Slack client
-from slack_sdk.errors import SlackApiError                  # Error handling for errors from SLACK API
-import json                                                 # Reading and writing to JSON/JSONL files
-from datetime import datetime, timedelta, timezone, date    # Calculating the date to append to file names
-from time import sleep                                      # Suspending the bot when necessary
-from pathlib import Path                                    # Accessing files in storage
-from google.cloud import storage, bigquery                  # Interacting with Google Cloud Storage
-from http. client import IncompleteRead                     # Error handling for unstable network conditions
-import requests                                             # Used for downloading files
-import mimetypes                                            # Define the mime types of the expected files
-from util.logging import GclClient
+from datetime import datetime, timedelta, timezone, date
+from http.client import IncompleteRead
+import json
+import mimetypes                                                         # Define the mime types of the expected files
+import os
+from pathlib import Path
+from time import sleep
 import time
 from typing import dict, list, Any
-import jsonschema
+
+import jsonschema                                                        # Specify the JSON schema for data being loaded to BQ for consistency
+import requests                                                          # Handling HTTP requests and responses
+from slack_bolt import App                                               # Initializing the Slack client
+from slack_sdk.errors import SlackApiError                               # Error handling for errors from SLACK API
+from google.cloud import storage, bigquery                               # Interacting with Google Cloud Storage
+from tenacity import retry, stop_after_attempt, wait_random_exponential  # Handle rate limits using exponential backoff
+
+from util.logging import GclClient
 
 class SlackScraper:
     def __init__(self, save_to_cloud = True) -> None:
@@ -64,6 +67,7 @@ class SlackScraper:
         with self.checkpoint_file.open('w') as fp:
             json.dump(checkpoints, fp, indent=4)
 
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     def get_slack_workspace_members(self) -> None:
         """
         Retrieve the users in the Slack workspace and store the info in JSONL format.
@@ -75,17 +79,17 @@ class SlackScraper:
                 is_call_successful = True
             except SlackApiError as e:
                 self.logger.error(f"[get_slack_workspace_members] Error: {e}")
-                sleep(15)
             except IncompleteRead:
                 self.logger.error("[get_slack_workspace_members] Unable to fetch Slack members, unstable network")
 
-        Path(f'downloads/Users/').mkdir(parents=True, exist_ok=True)
-        with open(f"downloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'w') as fp:
+        Path(f"{self.downloads_folder}/Users/").mkdir(parents=True, exist_ok=True)
+        date_ext = datetime.today().strftime("%Y%m%d")
+        with open(f"{self.downloads_folder}/Users/users_{date_ext}.jsonl", 'w') as fp:
             for user in response['members']:
                 json.dump(user, fp)
                 fp.write('\n')
         self._gcs_add_directory('users')
-        self._gcs_add_file(f"downloads/Users/users_{datetime.today().strftime('%Y%m%d')}.jsonl", 'users')
+        self._gcs_add_file(f"{self.downloads_folder}/Users/users_{date_ext}.jsonl", 'users')
 
     def _directory_exists(self, directory_name) -> bool:
         """
